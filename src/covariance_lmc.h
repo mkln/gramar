@@ -35,7 +35,10 @@ void CviaKron_invsympd_(arma::cube& CCi,
                         const arma::mat& coords, const arma::uvec& indx, 
                         int k, const arma::mat& theta, bool ps);
   
-double CviaKron_HRi_(arma::cube& H, arma::cube& Ri, arma::cube& Kppi, 
+double CviaKron_HRi_(arma::cube& H, arma::cube& Ri, 
+                     arma::cube& chR,
+                     arma::cube& chRi,
+                     arma::cube& Kppi, 
                      const arma::cube& Cxx,
                      const arma::mat& coords, 
                      const arma::uvec& indx, const arma::uvec& indy, 
@@ -52,6 +55,8 @@ void CviaKron_HRj_chol_bdiag(
     const arma::mat& coords, const arma::uvec& indx, const arma::uvec& indy, 
     int k, const arma::mat& theta, bool ps);
 
-void inv_det_via_chol(arma::mat& xinv, double& ldet, const arma::mat& x);
+void inv_det_via_chol(arma::mat& xinv, arma::mat& xchol,
+                      arma::mat& xcholi, 
+                      double& ldet, const arma::mat& x);
 
 #endif

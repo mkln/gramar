@@ -116,7 +116,7 @@ void kernelp_inplace(arma::mat& res,
                      const arma::vec& theta, bool same){
   
   double sigmasq = theta(theta.n_elem-1);
-  arma::vec kweights = theta.subvec(0, theta.n_elem-2);
+  arma::rowvec kweights = arma::trans(theta.subvec(0, theta.n_elem-2));
   
   if(same){
     for(unsigned int i=0; i<ind1.n_elem; i++){
@@ -124,9 +124,9 @@ void kernelp_inplace(arma::mat& res,
       for(unsigned int j=i; j<ind2.n_elem; j++){
         //arma::rowvec deltasq = kweights.t() % (cri - Xcoords.row(ind2(j)));
         //double weighted = sqrt(arma::accu(deltasq % deltasq));
-        arma::rowvec deltasq = cri - Xcoords.row(ind2(j));
-        double weighted = (arma::accu(kweights.t() % deltasq % deltasq));
-        res(i, j) = sigmasq * exp(-weighted) + (weighted == 0? 1e-6 : 0);
+        arma::rowvec delta = cri - Xcoords.row(ind2(j));
+        double weighted = pow(sqrt(arma::accu(kweights % delta % delta)), 1.99);
+        res(i, j) = sigmasq * exp(-weighted);// + (weighted == 0? 1e-6 : 0);
       }
     }
     res = arma::symmatu(res);
@@ -137,9 +137,9 @@ void kernelp_inplace(arma::mat& res,
       for(unsigned int j=0; j<ind2.n_elem; j++){
         //arma::rowvec deltasq = kweights.t() % (cri - Xcoords.row(ind2(j)));
         //double weighted = sqrt(arma::accu(deltasq % deltasq));
-        arma::rowvec deltasq = cri - Xcoords.row(ind2(j));
-        double weighted = (arma::accu(kweights.t() % deltasq % deltasq));
-        res(i, j) = sigmasq * exp(-weighted) + (weighted == 0? 1e-6 : 0);
+        arma::rowvec delta = cri - Xcoords.row(ind2(j));
+        double weighted = pow(sqrt(arma::accu(kweights % delta % delta)), 1.99);
+        res(i, j) = sigmasq * exp(-weighted);// + (weighted == 0? 1e-6 : 0);
       }
     }
   }
@@ -155,7 +155,7 @@ arma::mat Correlationf(
   // C(0) = 1/reparam
   arma::mat res = arma::zeros(ix.n_rows, iy.n_rows);
   
-  if(coords.n_cols == 2){
+  if(false & (coords.n_cols == 2)){
     
       // exponential
       double phi = theta(0);
@@ -180,7 +180,7 @@ arma::mat Correlationf(
   }
 }
 
-
+//[[Rcpp::export]]
 arma::mat Correlationc(
     const arma::mat& coordsx,
     const arma::mat& coordsy,
@@ -203,6 +203,14 @@ arma::mat Correlationc(
 }
 
 
+//[[Rcpp::export]]
+arma::mat gpkernel(
+    const arma::mat& coordsx,
+    const arma::vec& theta){
+  arma::uvec ix = arma::regspace<arma::uvec>(0, coordsx.n_rows-1);
+  return Correlationf(coordsx, ix, ix, theta, false, true);
+}
+
 
 void CviaKron_invsympd_(arma::cube& CCi, 
                         const arma::mat& coords, const arma::uvec& indx, 
@@ -213,10 +221,13 @@ void CviaKron_invsympd_(arma::cube& CCi,
   }
 }
 
-void inv_det_via_chol(arma::mat& xinv, double& ldet, const arma::mat& x){
-  arma::mat xchol = arma::inv(arma::trimatl(arma::chol( arma::symmatu(x) , "lower")));
-  ldet = arma::accu(log(xchol.diag()));
-  xinv = xchol.t() * xchol;
+void inv_det_via_chol(arma::mat& xinv, 
+                      arma::mat& xchol,
+                      arma::mat& xcholi, double& ldet, const arma::mat& x){
+  xchol = arma::chol( arma::symmatu(x) , "lower");
+  xcholi = arma::inv(arma::trimatl(xchol));
+  ldet = arma::accu(log(xcholi.diag()));
+  xinv = xcholi.t() * xcholi;
 }
 
 void inv_det_via_qr(arma::mat& xinv, double& ldet, const arma::mat& x){
@@ -228,7 +239,11 @@ void inv_det_via_qr(arma::mat& xinv, double& ldet, const arma::mat& x){
   ldet = - 0.5 * arma::accu(log(abs(R.diag())));
 }
 
-double CviaKron_HRi_(arma::cube& H, arma::cube& Ri, arma::cube& Kppi, 
+double CviaKron_HRi_(arma::cube& H, 
+                     arma::cube& Ri, 
+                     arma::cube& chR,
+                     arma::cube& chRi,
+                     arma::cube& Kppi, 
                      const arma::cube& Cxx,
                      const arma::mat& coords, 
                      const arma::uvec& indx, const arma::uvec& indy, 
@@ -236,7 +251,7 @@ double CviaKron_HRi_(arma::cube& H, arma::cube& Ri, arma::cube& Kppi,
   
   double logdet=0;
   for(int j=0; j<k; j++){
-    arma::mat Rinverted;
+    arma::mat Rinverted, Rchol, Rcholi;
     if(indy.n_elem > 0){
       arma::mat Cxy = Correlationf(coords, indx, indy, 
                                    theta.col(j), ps, false);
@@ -256,7 +271,7 @@ double CviaKron_HRi_(arma::cube& H, arma::cube& Ri, arma::cube& Kppi,
       double temp_ldet = 0;
       //arma::mat Temp;
       //inv_det_via_qr(Rinverted, temp_ldet, Targmat);
-      inv_det_via_chol(Rinverted, temp_ldet, Targmat);
+      inv_det_via_chol(Rinverted, Rchol, Rcholi, temp_ldet, Targmat);
       
       logdet += temp_ldet;
     
@@ -265,10 +280,12 @@ double CviaKron_HRi_(arma::cube& H, arma::cube& Ri, arma::cube& Kppi,
       arma::mat Targmat = Cxx.slice(j);
       double temp_ldet = 0;
       //inv_det_via_qr(Rinverted, temp_ldet, Targmat);
-      inv_det_via_chol(Rinverted, temp_ldet, Targmat);
+      inv_det_via_chol(Rinverted, Rchol, Rcholi, temp_ldet, Targmat);
       logdet += temp_ldet;
     }
     Ri.slice(j) = Rinverted;//
+    chR.slice(j) = Rchol;
+    chRi.slice(j) = Rcholi;
   }
   return logdet;
 }

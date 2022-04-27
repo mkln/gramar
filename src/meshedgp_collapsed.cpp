@@ -153,119 +153,119 @@ void MGP::new_precision_matrix_direct(MeshDataLMC& data){
     //Ci_blockrow_vals(i) = arma::zeros(0, 1);
     int ni = indexing(ui).n_elem;
     
-    for(int j=i; j<n_blocks; j++){
+    for(int j=i; (j<n_blocks)&(ni > 0); j++){
       // compute the upper triangular part of the precision matrix
       // col block name
       int uj = j;//block_names(j) - 1;
       int nj = indexing(uj).n_elem;
       
-      for(int h=0; h<k; h++){
-        arma::mat Ci_block;
-        
-        if(ui == uj){
-          // block diagonal part
-          Ci_block = (*data.w_cond_prec_ptr.at(ui)).slice(h);
+      if(nj > 0){
+        for(int h=0; h<k; h++){
+          arma::mat Ci_block;
           
-          for(int c=0; c<children(ui).n_elem; c++){
-            int child = children(ui)(c);
-            if(child != -1){
-              arma::mat AK_u = (*data.w_cond_mean_K_ptr.at(child)).slice(h).cols(u_is_which_col_f(ui)(c)(0));
-              Ci_block += AK_u.t() * (*data.w_cond_prec_ptr.at(child)).slice(h) * AK_u; 
+          if(ui == uj){
+            // block diagonal part
+            Ci_block = (*data.w_cond_prec_ptr.at(ui)).slice(h);
+            for(int c=0; c<children(ui).n_elem; c++){
+              int child = children(ui)(c);
+              if(child != -1){
+                arma::mat AK_u = (*data.w_cond_mean_K_ptr.at(child)).slice(h).cols(u_is_which_col_f(ui)(c)(0));
+                Ci_block += AK_u.t() * (*data.w_cond_prec_ptr.at(child)).slice(h) * AK_u; 
+              }
             }
-          }
-          
-          // locations to fill: indexing(ui) x indexing(uj) 
-          arma::umat tripl_locs(indexing(ui).n_elem * indexing(uj).n_elem, 2);
-          arma::mat tripl_val = arma::zeros(Ci_block.n_elem);
-          
-          for(int ix=0; ix<indexing(ui).n_elem; ix++){
-            for(int jx=0; jx<indexing(uj).n_elem; jx++){
-              int vecix = arma::sub2ind(arma::size(ni, nj), ix, jx);
-              tripl_locs(vecix, 0) = n * h + sortsort_order(indexing(ui)(ix));
-              tripl_locs(vecix, 1) = n * h + sortsort_order(indexing(uj)(jx));
-              tripl_val(vecix, 0) = Ci_block(ix, jx);
-            }
-          }
-          
-          //Rcpp::Rcout << ui << endl;
-          //Rcpp::Rcout << arma::size(blockrow_tripls(i)) << " " << arma::size(tripl_locs) << endl;
-          Ci_blockrow_tripls(i) = arma::join_vert(Ci_blockrow_tripls(i), tripl_locs);
-          //Rcpp::Rcout << arma::size(blockrow_vals(i)) << " " << arma::size(tripl_val) << endl;
-          Ci_blockrow_vals(i) = arma::join_vert(Ci_blockrow_vals(i), tripl_val);
-          //Rcpp::Rcout << "- " << endl;
-          
-        } else {
-          bool nonempty=false;
-          
-          // is there anything between these two? 
-          // they are either:
-          // 1: ui is parent of uj 
-          // 2: ui is child of uj <-- we're going by row so this should not be important?
-          // 3: ui and uj have common child
-          arma::uvec oneuv = arma::ones<arma::uvec>(1);
-          arma::uvec ui_is_ujs_parent = arma::find(children(ui) == uj);
-          //Rcpp::Rcout << parents(uj) << endl;
-          if(ui_is_ujs_parent.n_elem > 0){
-            nonempty = true;
             
-            // ui is a parent of uj
-            int c = ui_is_ujs_parent(0); // ui is uj's c-th parent
-            //Rcpp::Rcout << " loc 5 b " << c << " " << arma::size(param_data.w_cond_mean_K(uj)) << endl;
-            //Rcpp::Rcout << u_is_which_col_f(ui) << endl;
-            arma::mat AK_u = (*data.w_cond_mean_K_ptr.at(uj)).slice(h).cols(u_is_which_col_f(ui)(c)(0));
-            //Rcpp::Rcout << " loc 5 c " << endl;
-            Ci_block = - AK_u.t() * (*data.w_cond_prec_ptr.at(uj)).slice(h);
+            // locations to fill: indexing(ui) x indexing(uj) 
+            arma::umat tripl_locs(indexing(ui).n_elem * indexing(uj).n_elem, 2);
+            arma::mat tripl_val = arma::zeros(Ci_block.n_elem);
+            
+            for(int ix=0; ix<indexing(ui).n_elem; ix++){
+              for(int jx=0; jx<indexing(uj).n_elem; jx++){
+                int vecix = arma::sub2ind(arma::size(ni, nj), ix, jx);
+                tripl_locs(vecix, 0) = n * h + sortsort_order(indexing(ui)(ix));
+                tripl_locs(vecix, 1) = n * h + sortsort_order(indexing(uj)(jx));
+                tripl_val(vecix, 0) = Ci_block(ix, jx);
+              }
+            }
+            
+            //Rcpp::Rcout << ui << endl;
+            //Rcpp::Rcout << arma::size(blockrow_tripls(i)) << " " << arma::size(tripl_locs) << endl;
+            Ci_blockrow_tripls(i) = arma::join_vert(Ci_blockrow_tripls(i), tripl_locs);
+            //Rcpp::Rcout << arma::size(blockrow_vals(i)) << " " << arma::size(tripl_val) << endl;
+            Ci_blockrow_vals(i) = arma::join_vert(Ci_blockrow_vals(i), tripl_val);
+            //Rcpp::Rcout << "- " << endl;
+            
           } else {
-            // common children? in this case we can only have one common child
-            arma::vec commons = arma::intersect(children(uj), children(ui));
-            commons = commons(arma::find(commons != -1));
-            if(commons.n_elem > 0){
+            bool nonempty=false;
+            
+            // is there anything between these two? 
+            // they are either:
+            // 1: ui is parent of uj 
+            // 2: ui is child of uj <-- we're going by row so this should not be important?
+            // 3: ui and uj have common child
+            arma::uvec oneuv = arma::ones<arma::uvec>(1);
+            arma::uvec ui_is_ujs_parent = arma::find(children(ui) == uj);
+            //Rcpp::Rcout << parents(uj) << endl;
+            if(ui_is_ujs_parent.n_elem > 0){
               nonempty = true;
               
-              int child = commons(0);
-              arma::uvec find_ci = arma::find(children(ui) == child);
-              int ci = find_ci(0);
-              arma::uvec find_cj = arma::find(children(uj) == child);
-              int cj = find_cj(0);
-              arma::mat AK_ui = (*data.w_cond_mean_K_ptr.at(child)).slice(h).cols(u_is_which_col_f(ui)(ci)(0));
-              arma::mat AK_uj = (*data.w_cond_mean_K_ptr.at(child)).slice(h).cols(u_is_which_col_f(uj)(cj)(0));
-              Ci_block = AK_ui.t() * (*data.w_cond_prec_ptr.at(child)).slice(h) * AK_uj; 
+              // ui is a parent of uj
+              int c = ui_is_ujs_parent(0); // ui is uj's c-th parent
+              //Rcpp::Rcout << " loc 5 b " << c << " " << arma::size(param_data.w_cond_mean_K(uj)) << endl;
+              //Rcpp::Rcout << u_is_which_col_f(ui) << endl;
+              arma::mat AK_u = (*data.w_cond_mean_K_ptr.at(uj)).slice(h).cols(u_is_which_col_f(ui)(c)(0));
+              //Rcpp::Rcout << " loc 5 c " << endl;
+              Ci_block = - AK_u.t() * (*data.w_cond_prec_ptr.at(uj)).slice(h);
+            } else {
+              // common children? in this case we can only have one common child
+              arma::vec commons = arma::intersect(children(uj), children(ui));
+              commons = commons(arma::find(commons != -1));
+              if(commons.n_elem > 0){
+                nonempty = true;
+                int child = commons(0);
+                arma::uvec find_ci = arma::find(children(ui) == child);
+                int ci = find_ci(0);
+                arma::uvec find_cj = arma::find(children(uj) == child);
+                int cj = find_cj(0);
+                arma::mat AK_ui = (*data.w_cond_mean_K_ptr.at(child)).slice(h).cols(u_is_which_col_f(ui)(ci)(0));
+                arma::mat AK_uj = (*data.w_cond_mean_K_ptr.at(child)).slice(h).cols(u_is_which_col_f(uj)(cj)(0));
+                Ci_block = AK_ui.t() * (*data.w_cond_prec_ptr.at(child)).slice(h) * AK_uj; 
+                
+              }
+            }
+            
+            if(nonempty){
+              // locations to fill: indexing(ui) x indexing(uj) and the transposed lower block-triangular part
+              arma::umat tripl_locs1(ni * nj, 2);
+              arma::mat tripl_val1 = arma::vectorise(Ci_block);
               
+              for(int jx=0; jx<nj; jx++){
+                for(int ix=0; ix<ni; ix++){
+                  int vecix = arma::sub2ind(arma::size(ni, nj), ix, jx);
+                  tripl_locs1(vecix, 0) = n * h + sortsort_order(indexing(ui)(ix));
+                  tripl_locs1(vecix, 1) = n * h + sortsort_order(indexing(uj)(jx));
+                }
+              }
+              
+              Ci_blockrow_tripls(i) = arma::join_vert(Ci_blockrow_tripls(i), tripl_locs1);
+              Ci_blockrow_vals(i) = arma::join_vert(Ci_blockrow_vals(i), tripl_val1);
+              
+              arma::umat tripl_locs2(ni * nj, 2);
+              arma::mat tripl_val2 = arma::vectorise(arma::trans(Ci_block));
+              
+              for(int jx=0; jx<nj; jx++){
+                for(int ix=0; ix<ni; ix++){
+                  int vecix = arma::sub2ind(arma::size(nj, ni), jx, ix);
+                  tripl_locs2(vecix, 0) = n * h + sortsort_order(indexing(uj)(jx));
+                  tripl_locs2(vecix, 1) = n * h + sortsort_order(indexing(ui)(ix));
+                }
+              }
+              
+              Ci_blockrow_tripls(i) = arma::join_vert(Ci_blockrow_tripls(i), tripl_locs2);
+              Ci_blockrow_vals(i) = arma::join_vert(Ci_blockrow_vals(i), tripl_val2);
             }
           }
-          
-          if(nonempty){
-            // locations to fill: indexing(ui) x indexing(uj) and the transposed lower block-triangular part
-            arma::umat tripl_locs1(ni * nj, 2);
-            arma::mat tripl_val1 = arma::vectorise(Ci_block);
-            
-            for(int jx=0; jx<nj; jx++){
-              for(int ix=0; ix<ni; ix++){
-                int vecix = arma::sub2ind(arma::size(ni, nj), ix, jx);
-                tripl_locs1(vecix, 0) = n * h + sortsort_order(indexing(ui)(ix));
-                tripl_locs1(vecix, 1) = n * h + sortsort_order(indexing(uj)(jx));
-              }
-            }
-            
-            Ci_blockrow_tripls(i) = arma::join_vert(Ci_blockrow_tripls(i), tripl_locs1);
-            Ci_blockrow_vals(i) = arma::join_vert(Ci_blockrow_vals(i), tripl_val1);
-            
-            arma::umat tripl_locs2(ni * nj, 2);
-            arma::mat tripl_val2 = arma::vectorise(arma::trans(Ci_block));
-            
-            for(int jx=0; jx<nj; jx++){
-              for(int ix=0; ix<ni; ix++){
-                int vecix = arma::sub2ind(arma::size(nj, ni), jx, ix);
-                tripl_locs2(vecix, 0) = n * h + sortsort_order(indexing(uj)(jx));
-                tripl_locs2(vecix, 1) = n * h + sortsort_order(indexing(ui)(ix));
-              }
-            }
-            
-            Ci_blockrow_tripls(i) = arma::join_vert(Ci_blockrow_tripls(i), tripl_locs2);
-            Ci_blockrow_vals(i) = arma::join_vert(Ci_blockrow_vals(i), tripl_val2);
-          }
-        }
-      } // factor loop
+        } // factor loop
+      } // if observations
     } // inner block
   } // outer block
   
@@ -277,6 +277,7 @@ void MGP::new_precision_matrix_direct(MeshDataLMC& data){
   
   data.Citsqi = Eigen::SparseMatrix<double>(nk, nk);
   
+  Rcpp::Rcout << "field_v_concatm: " << endl;
   arma::umat Cilocs = field_v_concatm(Ci_blockrow_tripls);
   arma::vec Civals = field_v_concatm(Ci_blockrow_vals);
   
@@ -321,92 +322,94 @@ void MGP::update_precision_matrix(MeshDataLMC& data){
     
     int ni = indexing(ui).n_elem;
     
-    for(int j=i; j<n_blocks; j++){
+    for(int j=i; (j<n_blocks)&(ni>0); j++){
       // compute the upper triangular part of the precision matrix
       // col block name
       int uj = j;//block_names(j) - 1;
       int nj = indexing(uj).n_elem;
-      
-      for(int h=0; h<k; h++){
-        arma::mat Ci_block;
         
-        if(ui == uj){
-          // block diagonal part
-          Ci_block = (*data.w_cond_prec_ptr.at(ui)).slice(0);
-          for(int c=0; c<children(ui).n_elem; c++){
-            int child = children(ui)(c);
-            if(child != -1){
-              arma::mat AK_u = (*data.w_cond_mean_K_ptr.at(child)).slice(h).cols(u_is_which_col_f(ui)(c)(0));
-              Ci_block += AK_u.t() * (*data.w_cond_prec_ptr.at(child)).slice(h) * AK_u; 
-            }
-          }
+      if(nj > 0){
+        for(int h=0; h<k; h++){
+          arma::mat Ci_block;
           
-          // locations to fill: indexing(ui) x indexing(uj) 
-          for(int ix=0; ix < ni; ix++){
-            for(int jx=0; jx < nj; jx++){
-              int row_ix = n * h + sortsort_order(indexing(ui)(ix));
-              int col_ix = n * h + sortsort_order(indexing(uj)(jx));
-              data.Citsqi.coeffRef(row_ix, col_ix) = Ci_block(ix, jx);
+          if(ui == uj){
+            // block diagonal part
+            Ci_block = (*data.w_cond_prec_ptr.at(ui)).slice(0);
+            for(int c=0; c<children(ui).n_elem; c++){
+              int child = children(ui)(c);
+              if(child != -1){
+                arma::mat AK_u = (*data.w_cond_mean_K_ptr.at(child)).slice(h).cols(u_is_which_col_f(ui)(c)(0));
+                Ci_block += AK_u.t() * (*data.w_cond_prec_ptr.at(child)).slice(h) * AK_u; 
+              }
             }
-          }
-        } else {
-          bool nonempty=false;
-          
-          // is there anything between these two? 
-          // they are either:
-          // 1: ui is parent of uj 
-          // 2: ui is child of uj <-- we're going by row so this should not be important?
-          // 3: ui and uj have common child
-          arma::uvec oneuv = arma::ones<arma::uvec>(1);
-          arma::uvec ui_is_ujs_parent = arma::find(children(ui) == uj, 1, "first");
-          //Rcpp::Rcout << parents(uj) << endl;
-          if(ui_is_ujs_parent.n_elem > 0){
-            nonempty = true;
             
-            // ui is a parent of uj
-            int c = ui_is_ujs_parent(0); // ui is uj's c-th parent
-            //Rcpp::Rcout << " loc 5 b " << c << " " << arma::size(param_data.w_cond_mean_K(uj)) << endl;
-            //Rcpp::Rcout << u_is_which_col_f(ui) << endl;
-            arma::mat AK_u = (*data.w_cond_mean_K_ptr.at(uj)).slice(h).cols(u_is_which_col_f(ui)(c)(0));
-            //Rcpp::Rcout << " loc 5 c " << endl;
-            Ci_block = - AK_u.t() * (*data.w_cond_prec_ptr.at(uj)).slice(h);
-          } else {
-            // common children? in this case we can only have one common child
-            arma::vec commons = arma::intersect(children(uj), children(ui));
-            commons = commons(arma::find(commons != -1));
-            if(commons.n_elem > 0){
-              nonempty = true;
-              
-              int child = commons(0);
-              arma::uvec find_ci = arma::find(children(ui) == child, 1, "first");
-              int ci = find_ci(0);
-              arma::uvec find_cj = arma::find(children(uj) == child, 1, "first");
-              int cj = find_cj(0);
-              arma::mat AK_ui = (*data.w_cond_mean_K_ptr.at(child)).slice(h).cols(u_is_which_col_f(ui)(ci)(0));
-              arma::mat AK_uj = (*data.w_cond_mean_K_ptr.at(child)).slice(h).cols(u_is_which_col_f(uj)(cj)(0));
-              Ci_block = AK_ui.t() * (*data.w_cond_prec_ptr.at(child)).slice(h) * AK_uj; 
-            }
-          }
-          
-          if(nonempty){
-            // locations to fill: indexing(ui) x indexing(uj) and the transposed lower block-triangular part
-            arma::umat tripl_locs1(ni * nj, 2);
-            arma::mat tripl_val1 = arma::vectorise(Ci_block);
-            //arma::mat tripl_val2 = arma::vectorise(arma::trans(Ci_block));
-            
-            for(int jx=0; jx<nj; jx++){
-              for(int ix=0; ix<ni; ix++){
+            // locations to fill: indexing(ui) x indexing(uj) 
+            for(int ix=0; ix < ni; ix++){
+              for(int jx=0; jx < nj; jx++){
                 int row_ix = n * h + sortsort_order(indexing(ui)(ix));
                 int col_ix = n * h + sortsort_order(indexing(uj)(jx));
-                int vecix = arma::sub2ind(arma::size(ni, nj), ix, jx);
-                data.Citsqi.coeffRef(row_ix, col_ix) = tripl_val1(vecix);
-                data.Citsqi.coeffRef(col_ix, row_ix) = tripl_val1(vecix);
+                data.Citsqi.coeffRef(row_ix, col_ix) = Ci_block(ix, jx);
+              }
+            }
+          } else {
+            bool nonempty=false;
+            
+            // is there anything between these two? 
+            // they are either:
+            // 1: ui is parent of uj 
+            // 2: ui is child of uj <-- we're going by row so this should not be important?
+            // 3: ui and uj have common child
+            arma::uvec oneuv = arma::ones<arma::uvec>(1);
+            arma::uvec ui_is_ujs_parent = arma::find(children(ui) == uj, 1, "first");
+            //Rcpp::Rcout << parents(uj) << endl;
+            if(ui_is_ujs_parent.n_elem > 0){
+              nonempty = true;
+              
+              // ui is a parent of uj
+              int c = ui_is_ujs_parent(0); // ui is uj's c-th parent
+              //Rcpp::Rcout << " loc 5 b " << c << " " << arma::size(param_data.w_cond_mean_K(uj)) << endl;
+              //Rcpp::Rcout << u_is_which_col_f(ui) << endl;
+              arma::mat AK_u = (*data.w_cond_mean_K_ptr.at(uj)).slice(h).cols(u_is_which_col_f(ui)(c)(0));
+              //Rcpp::Rcout << " loc 5 c " << endl;
+              Ci_block = - AK_u.t() * (*data.w_cond_prec_ptr.at(uj)).slice(h);
+            } else {
+              // common children? in this case we can only have one common child
+              arma::vec commons = arma::intersect(children(uj), children(ui));
+              commons = commons(arma::find(commons != -1));
+              if(commons.n_elem > 0){
+                nonempty = true;
+                
+                int child = commons(0);
+                arma::uvec find_ci = arma::find(children(ui) == child, 1, "first");
+                int ci = find_ci(0);
+                arma::uvec find_cj = arma::find(children(uj) == child, 1, "first");
+                int cj = find_cj(0);
+                arma::mat AK_ui = (*data.w_cond_mean_K_ptr.at(child)).slice(h).cols(u_is_which_col_f(ui)(ci)(0));
+                arma::mat AK_uj = (*data.w_cond_mean_K_ptr.at(child)).slice(h).cols(u_is_which_col_f(uj)(cj)(0));
+                Ci_block = AK_ui.t() * (*data.w_cond_prec_ptr.at(child)).slice(h) * AK_uj; 
+              }
+            }
+            
+            if(nonempty){
+              // locations to fill: indexing(ui) x indexing(uj) and the transposed lower block-triangular part
+              arma::umat tripl_locs1(ni * nj, 2);
+              arma::mat tripl_val1 = arma::vectorise(Ci_block);
+              //arma::mat tripl_val2 = arma::vectorise(arma::trans(Ci_block));
+              
+              for(int jx=0; jx<nj; jx++){
+                for(int ix=0; ix<ni; ix++){
+                  int row_ix = n * h + sortsort_order(indexing(ui)(ix));
+                  int col_ix = n * h + sortsort_order(indexing(uj)(jx));
+                  int vecix = arma::sub2ind(arma::size(ni, nj), ix, jx);
+                  data.Citsqi.coeffRef(row_ix, col_ix) = tripl_val1(vecix);
+                  data.Citsqi.coeffRef(col_ix, row_ix) = tripl_val1(vecix);
+                }
               }
             }
           }
-        }
-        
-      } // factor loop
+          
+        } // factor loop
+      } // if observations
     } // inner loop
   } // outer loop
 
@@ -420,6 +423,51 @@ void MGP::update_precision_matrix(MeshDataLMC& data){
 }
 
 
+arma::mat MGP::posterior_sample_cholfree(MeshDataLMC& data){
+  // sample from Ci^1/2 u 
+  // where u is std normal
+  // -- this is used to sample from posterior w | y, beta
+  // -- without using Cholesky
+  
+  if(verbose & debug){
+    Rcpp::Rcout << "[posterior_sample_cholfree] " << "\n";
+  }
+  arma::mat result = arma::zeros(coords.n_rows, k);
+  arma::mat delta = arma::randn(coords.n_rows, k);
+  // assuming that the ordering in block_names is the ordering of the product of conditional densities
+  for(unsigned int i=0; i<indexing.n_rows; i++){
+    for(unsigned int j=0; j<indexing.n_cols; j++){
+      unsigned int u = arma::sub2ind(arma::size(indexing.n_rows, indexing.n_cols), i, j);
+      int nobs = indexing(u).n_rows;
+      if(nobs > 0){
+        arma::mat result_loc = arma::zeros(nobs, k);
+        for(int h=0; h<k; h++){
+          arma::mat Ci_block;
+          arma::mat deltai = delta.rows(indexing(u));
+          
+          // block diagonal part
+          result_loc.col(h) = (*data.w_cond_chRi_ptr.at(u)).slice(h) * deltai.col(h);
+          
+          for(int c=0; c<children(u).n_elem; c++){
+            int child = children(u)(c);
+            if(child != -1){
+              arma::mat deltac = delta.rows(indexing(child));
+              arma::mat H_u = (*data.w_cond_mean_K_ptr.at(child)).slice(h).cols(u_is_which_col_f(u)(c)(0));
+              result_loc -= H_u.t() * (*data.w_cond_chRi_ptr.at(child)).slice(h) * deltac.col(h);
+            }
+          }
+        } // factor loop
+        result.rows(indexing(u)) = result_loc;
+      }
+    }
+  }
+  if(verbose & debug){
+    Rcpp::Rcout << "[posterior_sample_cholfree] done \n";
+  }
+  return result;
+}
+
+
 void MGP::solver_initialize(){
   std::chrono::steady_clock::time_point start;
   std::chrono::steady_clock::time_point end;
@@ -430,97 +478,221 @@ void MGP::solver_initialize(){
   // single pattern forever
   start = std::chrono::steady_clock::now();
   solver.analyzePattern(param_data.Citsqi);
-  end = std::chrono::steady_clock::now();
-  double timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-  Rcpp::Rcout << "analyzePattern: " << timer << endl;
+  
+  if(verbose & debug){
+    end = std::chrono::steady_clock::now();
+    double timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    Rcpp::Rcout << "analyzePattern: " << timer << endl;
+  }
 }
 
-void MGP::collapsed_logdensity(MeshDataLMC& data, const Eigen::MatrixXd& yXBe, 
+void MGP::collapsed_logdensity(MeshDataLMC& data, 
+                               const Eigen::MatrixXd& ye, 
                                const Eigen::MatrixXd& Xe,
-                               const arma::vec& tausq_inv){
+                               const arma::mat& y,
+                               const arma::mat& x,
+                               const arma::mat& xb,
+                               const arma::mat& Vbi,
+                               const arma::mat& XtX,
+                               const arma::vec& tausq_inv,
+                               bool also_sample_w){ 
   std::chrono::steady_clock::time_point start;
   std::chrono::steady_clock::time_point end;
   
-  data.Citsqi.diagonal().array() += tausq_inv(0);
+  double tsqi2 = pow(tausq_inv(0), 2);
+  double tsqi = tausq_inv(0);
+  
+  arma::mat yxbtsqi;
+  if(also_sample_w){
+    yxbtsqi = (y-xb) * tsqi;
+    yxbtsqi += pow(tsqi, 0.5) * arma::randn(y.n_rows, 1) +
+      posterior_sample_cholfree(data);
+  }
+  
+  //***
+  //data.Cidebug = data.Citsqi;
+  bool debugmore = false;
+  
+  data.Citsqi.diagonal().array() += tsqi;
   
   start = std::chrono::steady_clock::now();
   solver.factorize(data.Citsqi);
   data.Citsqi_ldet = solver.logDeterminant();
   end = std::chrono::steady_clock::now();
   double timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-  Rcpp::Rcout << "factorize: " << timer << endl;
+  if(verbose&debug || debugmore){
+    Rcpp::Rcout << "factorize: " << timer << endl;
+  }
   
   start = std::chrono::steady_clock::now();
-  Eigen::MatrixXd Citsqi_solveX_e = solver.solve(Xe);
-  Eigen::MatrixXd Citsqi_solveyXB_e = solver.solve(yXBe);
-  data.Citsqi_solveX = matrixxd_to_armamat(Citsqi_solveX_e);
-  data.Citsqi_solveyXB = matrixxd_to_armamat(Citsqi_solveyXB_e);
+  Eigen::MatrixXd Citsqi_solvey_e = solver.solve(ye);
+  data.Citsqi_solvey = matrixxd_to_armamat(Citsqi_solvey_e);
   end = std::chrono::steady_clock::now();
   timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-  Rcpp::Rcout << "solve: " << timer << endl;
+  if(verbose&debug || debugmore){
+    Rcpp::Rcout << "solve 1: " << timer << endl;
+  }
+  
+  start = std::chrono::steady_clock::now();
+  int p = x.n_cols;
+  data.Citsqi_solveX = arma::zeros(x.n_rows, x.n_cols);
+#ifdef _OPENMP
+#pragma omp parallel for 
+#endif
+  for(int i=0; i<p+1+also_sample_w; i++){
+    if(i==0){
+      arma::mat randnorm = arma::randn(x.n_rows);
+      Eigen::MatrixXd randnorm_e = armamat_to_matrixxd(randnorm);
+      Eigen::MatrixXd Citsqi_solvern_e = solver.solve(randnorm_e);
+      data.Citsqi_solvern = matrixxd_to_armamat(Citsqi_solvern_e);
+    } else if(i<p+1) {
+      Eigen::MatrixXd xsolved_e = solver.solve(Xe.col(i-1));
+      arma::mat xsolved = matrixxd_to_armamat(xsolved_e);
+      data.Citsqi_solveX.col(i-1) = xsolved;  
+    } else {
+      Eigen::MatrixXd yxbtsqi_e = armamat_to_matrixxd(yxbtsqi);
+      Eigen::MatrixXd result_e = solver.solve(yxbtsqi_e);
+      w = matrixxd_to_armamat(result_e);
+    }
+  }
+  
+  //Eigen::MatrixXd Citsqi_solveX_e = solver.solve(Xe);
+  //data.Citsqi_solveX = matrixxd_to_armamat(Citsqi_solveX_e);
+  end = std::chrono::steady_clock::now();
+  timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  if(verbose&debug || debugmore){
+    Rcpp::Rcout << "solve all: " << timer << endl;
+  }
+  
+  start = std::chrono::steady_clock::now();
+  
+  end = std::chrono::steady_clock::now();
+  timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  if(verbose&debug || debugmore){
+    Rcpp::Rcout << "copy: " << timer << endl;
+  }
   
   // get logdensity
+  start = std::chrono::steady_clock::now();
   double ldetCi = arma::accu(data.logdetCi_comps) * 2.0;
-  double ldet_Ctsq_i = coords.n_rows * 1.0/tausq_inv(0) - ldetCi  + data.Citsqi_ldet;
-
-  arma::mat yXB = matrixxd_to_armamat(yXBe);
+  double ldet_Ctsq_i = coords.n_rows * log(1.0/tsqi) - ldetCi + data.Citsqi_ldet;
+  double yty = arma::conv_to<double>::from(y.t() * y);
+  double yCiy = arma::conv_to<double>::from(y.t() * data.Citsqi_solvey);
   
-  double yXB_yXB = arma::conv_to<double>::from(yXB.t() * yXB);
-  double yXB_qform = arma::conv_to<double>::from(yXB.t() * data.Citsqi_solveyXB);
-  data.collapsed_ldens = -0.5 * ldet_Ctsq_i - 0.5 * tausq_inv(0) * 
-    yXB_yXB - pow(tausq_inv(0), 2.0) * yXB_qform;
+  data.collapsed_ldens = -0.5 * ldet_Ctsq_i - 0.5 * tsqi * 
+    yty + 0.5 * tsqi2 * yCiy;
+  
+  /*Rcpp::Rcout << "ldet: " << ldet_Ctsq_i << " and qf: " << - 0.5 * tausq_inv(0) * 
+    yty + 0.5 * pow(tausq_inv(0), 2.0) * yCiy << endl;
+  Rcpp::Rcout << "yy: " << yty << " qfin: " << yCiy << " finish: " << data.collapsed_ldens << endl; 
+  */
+  //Eigen::MatrixXd yCiy_e = yXBe.transpose() * Citsqi_solvey_e;
+  end = std::chrono::steady_clock::now();
+  timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  if(verbose&debug || debugmore){
+    Rcpp::Rcout << "coll dens: " << timer << endl;
+  }
+  
+  start = std::chrono::steady_clock::now();
+  //*-*-*-*-*- collapsed2 logdensity
+  data.bpost_meancore = x.t() * (y*tsqi - data.Citsqi_solvey * tsqi2);
+  
+  arma::mat Lambdainside = Vbi + XtX*tsqi - x.t() * data.Citsqi_solveX * tsqi2;
+  arma::mat cholLambda = arma::chol(arma::symmatu(Lambdainside), "lower");
+  data.bpost_Sichol = arma::inv(arma::trimatl(cholLambda));
+  arma::vec xLsolve = x * data.bpost_Sichol.t() * data.bpost_Sichol * data.bpost_meancore;
+  
+  double yellow = yty*tsqi;
+  double blue = -arma::conv_to<double>::from(y.t() * data.Citsqi_solvey * tsqi2);
+  double pink = -arma::conv_to<double>::from(y.t() * xLsolve * tsqi);
+  double green = arma::conv_to<double>::from(data.Citsqi_solvey.t() * xLsolve * tsqi2);
+  
+  double collcoll_dens_core = yellow + blue + pink + green;
+
+  arma::mat cholVbi = arma::chol(Vbi, "lower");
+  double ldet_Vbi = 2*arma::accu(log(cholVbi.diag()));
+  double ldet_Lambda = 2*arma::accu(log(cholLambda.diag()));
+  double logdet = ldet_Lambda - ldet_Vbi + ldet_Ctsq_i;
+  
+  data.collapsed_ldens = -0.5 * logdet - 0.5* collcoll_dens_core;
+  end = std::chrono::steady_clock::now();
+  timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  if(verbose&debug || debugmore){
+    Rcpp::Rcout << "data.collapsed_ldens : " << data.collapsed_ldens << " | " << logdet << " " << collcoll_dens_core << endl;
+    Rcpp::Rcout << "coll coll: " << timer << endl;
+  }
+  
+  if(verbose&debug || debugmore){
+    Rcpp::Rcout << "ldens: " << timer << endl;
+  }
 }
 
 bool MGP::get_collapsed_logdens_comps(MeshDataLMC& data, 
-                                      const Eigen::MatrixXd& yXBe,
+                                      const Eigen::MatrixXd& ye,
                                       const Eigen::MatrixXd& Xe,
-                                      const arma::vec& tausq_inv){
+                                      const arma::mat& y,
+                                      const arma::mat& x,
+                                      const arma::mat& xb,
+                                      const arma::mat& Vbi,
+                                      const arma::mat& XtX,
+                                      const arma::vec& tausq_inv,
+                                      bool also_sample_w){
   
   bool acceptable = refresh_cache(data);
   if(acceptable){
     acceptable = calc_mgplogdens(data);
     update_precision_matrix(data);
-    collapsed_logdensity(data, yXBe, Xe, tausq_inv);
+    collapsed_logdensity(data, ye, Xe,  y, x, xb, Vbi, XtX, tausq_inv, also_sample_w);
     return acceptable;
   } else {
     return acceptable;
   }
 }
 
-void MGP::metrop_theta_collapsed(const Eigen::MatrixXd& yXBe, const Eigen::MatrixXd& Xe, 
-                                 const arma::vec& tausq_inv){
+arma::vec MGP::metrop_theta_collapsed(const Eigen::MatrixXd& ye, 
+                                      const Eigen::MatrixXd& Xe, 
+                                      const arma::mat& y,
+                                      const arma::mat& x,
+                                      const arma::mat& xb,
+                                      const arma::mat& Vbi,
+                                      const arma::mat& XtX,
+                                 const arma::vec& tausq_inv, bool also_sample_w){
   if(verbose & debug){
     Rcpp::Rcout << "[metrop_theta_collapsed] start\n";
   }
   
+  // order: tausq_inv, phi_1, ..., phi_p, sigmasq
+  
+  arma::vec current_tausq_inv = tausq_inv;
   theta_adapt.count_proposal();
   
-  arma::vec param = arma::vectorise(param_data.theta);
-  arma::vec new_param = arma::vectorise(param_data.theta);
+  arma::vec param = arma::join_vert(
+    tausq_inv, arma::vectorise(param_data.theta));
+  arma::vec new_param = param;
   
   Rcpp::RNGScope scope;
   arma::vec U_update = mrstdnorm(new_param.n_elem, 1);
   
+  arma::rowvec tausqinv_bounds = arma::rowvec("1e-2 1e6");
+  arma::mat param_unif_bounds = arma::join_vert(tausqinv_bounds,
+                                                theta_unif_bounds);
+  
   
   // theta
-  new_param = par_huvtransf_back(par_huvtransf_fwd(param, theta_unif_bounds) + 
-    theta_adapt.paramsd * U_update, theta_unif_bounds);
+  new_param = par_huvtransf_back(par_huvtransf_fwd(param, param_unif_bounds) + 
+    theta_adapt.paramsd * U_update, param_unif_bounds);
   
   //new_param(1) = 1; //***
-  
   //bool out_unif_bounds = unif_bounds(new_param, theta_unif_bounds);
+  //arma::mat theta_proposal = 
+  //  arma::mat(new_param.memptr(), new_param.n_elem/k, k);
   
-  arma::mat theta_proposal = 
-    arma::mat(new_param.memptr(), new_param.n_elem/k, k);
+  alter_data.theta = new_param.subvec(1, new_param.n_elem-1);
+  arma::vec tausq_inv_alt = tausq_inv;
+  tausq_inv_alt(0) = new_param(0);
   
-  if(use_ps == false){
-    theta_proposal.tail_rows(1).fill(1);
-  }
-  
-  alter_data.theta = theta_proposal;
-  
-  bool acceptable = get_collapsed_logdens_comps(param_data, yXBe, Xe, tausq_inv);
-  acceptable = get_collapsed_logdens_comps(alter_data, yXBe, Xe, tausq_inv);
+  bool acceptable = //get_collapsed_logdens_comps(param_data, yXBe, Xe, tausq_inv);
+    get_collapsed_logdens_comps(alter_data, ye, Xe, y, x, xb, Vbi, XtX, tausq_inv_alt, also_sample_w);
   
   bool accepted = false;
   double logaccept = 0;
@@ -531,26 +703,23 @@ void MGP::metrop_theta_collapsed(const Eigen::MatrixXd& yXBe, const Eigen::Matri
   
   if(acceptable){
     new_loglik = alter_data.collapsed_ldens;
-    
     current_loglik = param_data.collapsed_ldens;
     
     prior_logratio = calc_prior_logratio(
       alter_data.theta.tail_rows(1).t(), param_data.theta.tail_rows(1).t(), 2, 1); // sigmasq
     
-    if(param_data.theta.n_rows > 5){
-      for(int i=0; i<param_data.theta.n_rows-2; i++){
+    if(param_data.theta.n_rows > 1){
+      for(int i=0; i<param_data.theta.n_rows-1; i++){
         prior_logratio += arma::accu( -alter_data.theta.row(i) +param_data.theta.row(i) ); // exp
       }
     }
     
-    jacobian  = calc_jacobian(new_param, param, theta_unif_bounds);
+    jacobian  = calc_jacobian(new_param, param, param_unif_bounds);
     logaccept = new_loglik - current_loglik + 
       prior_logratio +
       jacobian;
     
-    
     accepted = do_I_accept(logaccept);
-    
   } else {
     accepted = false;
     //num_chol_fails ++;
@@ -563,7 +732,8 @@ void MGP::metrop_theta_collapsed(const Eigen::MatrixXd& yXBe, const Eigen::Matri
     theta_adapt.count_accepted();
     
     accept_make_change();
-    param_data.theta = theta_proposal;
+    //param_data.theta = theta_proposal;
+    current_tausq_inv = tausq_inv_alt;
     
     if(debug & verbose){
       Rcpp::Rcout << "[theta] accepted (log accept. " << logaccept << " : " << new_loglik << " " << current_loglik << 
@@ -586,6 +756,483 @@ void MGP::metrop_theta_collapsed(const Eigen::MatrixXd& yXBe, const Eigen::Matri
   if(verbose & debug){
     Rcpp::Rcout << "[metrop_theta] end\n";
   }
+  return current_tausq_inv;
+}
+
+
+arma::vec MGP::gibbs_beta_collapsed(){
+  int p = param_data.bpost_Sichol.n_rows;
+  arma::vec normal_rn = arma::randn(p);
+  return param_data.bpost_Sichol.t() * (param_data.bpost_Sichol * param_data.bpost_meancore + normal_rn);
+}
+
+
+void MGP::prediction_sample(const arma::vec& theta,
+                            const arma::mat& xobs, const arma::vec& wobs, 
+                            const arma::field<arma::uvec>& obs_indexing){
+  // sample from MGP prior
+  w = arma::zeros(coords.n_rows, k);
+  
+  if(verbose & debug){
+    Rcpp::Rcout << "[prediction_sample] " << "\n";
+  }
+  
+  for(unsigned int i=0; i<indexing.n_rows; i++){
+    for(unsigned int j=0; j<indexing.n_cols; j++){
+      unsigned int u = arma::sub2ind(arma::size(indexing.n_rows, indexing.n_cols), i, j);
+      
+      arma::uvec parent_set;
+      arma::mat xpar, wpar;
+      
+      parent_set = obs_indexing(u);
+      xpar = xobs.rows(obs_indexing(u)); 
+      wpar = wobs.rows(obs_indexing(u));
+    
+      arma::mat xo = xcoords.rows(indexing(u));
+      // 
+      arma::mat Coo = Correlationf(xcoords, indexing(u), indexing(u), theta, false, true);
+      arma::mat Cxxi = arma::inv_sympd(Correlationc(xpar, xpar, theta, false, true));
+      arma::mat Cox = Correlationc(xo, xpar, theta, false, false);
+      
+      arma::mat H = Cox * Cxxi;
+      arma::mat Rchol = arma::chol(arma::symmatu(Coo - H * Cox.t()), "lower");
+      
+      arma::mat pred_mean = H * wpar;
+      arma::vec rnvec = arma::randn(indexing(u).n_elem);
+      
+      w.rows(indexing(u)) = pred_mean + Rchol * rnvec;
+    }
+  }
+  
+  if(verbose & debug){
+    Rcpp::Rcout << "[prediction_sample] loops \n";
+  }
+  
+}
+
+
+
+/*
+arma::mat MGP::predict_via_precision(const MGP& out_mgp, const arma::vec& theta){
+  
+  std::chrono::steady_clock::time_point start;
+  std::chrono::steady_clock::time_point end;
+  int n = coords.n_rows;
+  int nk = n * k;
+  
+  arma::uvec linear_order = arma::regspace<arma::uvec>(0, n-1);
+  arma::uvec sortsort_order = linear_order; //
+  //arma::sort_index(arma::sort_index(membership));
+  
+  linear_sort_map = arma::join_horiz(linear_order, sortsort_order);
+  
+  start = std::chrono::steady_clock::now();
+  // K_cholcp_cache = invchol(Ri)
+  arma::field<arma::umat> H_blockrow_tripls(k * 2 * n_blocks);
+  arma::field<arma::mat> H_blockrow_vals(k * 2 * n_blocks);
+  arma::field<arma::umat> Ri_blockrow_tripls(k * 2 * n_blocks);
+  arma::field<arma::mat> Ri_blockrow_vals(k * 2 * n_blocks);
+  
+  int h_ctr = 0;
+  int ri_ctr = 0;
+  
+  arma::field<arma::uvec> o_indexing = out_mgp.indexing;
+  arma::field<arma::uvec> o_par_indexing = out_mgp.parents_indexing;
+  arma::mat o_xcoords = out_mgp.xcoords;
+  arma::mat io_xcoords = arma::join_vert(xcoords, o_xcoords);
+  
+  int no = o_xcoords.n_rows;
+  
+  for(int i=0; i<n_blocks; i++){
+    int ui = i;//block_names(i) - 1;
+    int ni = indexing(ui).n_elem;
+    int np = parents_indexing(ui).n_elem;
+    
+    arma::uvec sorted_index = indexing(ui);//arma::sort(sortsort_order(indexing(ui)));
+    
+    // in part
+    if(np > 0){
+      
+      arma::uvec sorted_parents = parents_indexing(ui);//arma::sort(sortsort_order(parents_indexing(ui)));
+      
+      // locations to fill: indexing(ui) x parents_indexing(uj) 
+      arma::umat H_tripl_locs(ni * np, 2);
+      arma::mat H_tripl_val = arma::zeros(ni * np);
+      
+      arma::mat Hmod = arma::trans(*param_data.w_cond_chRi_ptr.at(ui)) * (*param_data.w_cond_mean_K_ptr.at(ui));
+      
+      for(int ix=0; ix < ni; ix++){
+        for(int jx=0; jx < np; jx++){
+          int vecix = arma::sub2ind(arma::size(ni, np), ix, jx);
+          H_tripl_locs(vecix, 0) = sorted_index(ix);//sortsort_order(indexing(ui)(ix));
+          H_tripl_locs(vecix, 1) = sorted_parents(jx);//sortsort_order(parents_indexing(ui)(jx));
+          H_tripl_val(vecix, 0) = (*param_data.w_cond_mean_K_ptr.at(ui))(ix, jx, 0);
+        }
+      }
+      H_blockrow_tripls(h_ctr) = H_tripl_locs;
+      H_blockrow_vals(h_ctr) = H_tripl_val;
+      h_ctr++;  
+    }
+    
+    // locations to fill: indexing(ui) x parents_indexing(uj)
+    arma::umat Ri_tripl_locs(ni * ni, 2);
+    arma::mat Ri_tripl_val = arma::zeros(ni * ni);
+    for(int ix=0; ix < ni; ix++){
+      for(int jx=0; jx < ni; jx++){
+        int vecix = arma::sub2ind(arma::size(ni, ni), ix, jx);
+        Ri_tripl_locs(vecix, 0) = sorted_index(ix); //sortsort_order(indexing(ui)(ix));
+        Ri_tripl_locs(vecix, 1) = sorted_index(jx); //sortsort_order(indexing(ui)(jx));
+        Ri_tripl_val(vecix, 0) = (*param_data.w_cond_chRi_ptr.at(ui))(ix, jx, 0);
+      }
+    }
+    Ri_blockrow_tripls(ri_ctr) = Ri_tripl_locs;
+    Ri_blockrow_vals(ri_ctr) = Ri_tripl_val;
+    ri_ctr++;
+    
+    // out part
+    
+    arma::uvec o_par_ix = n + o_par_indexing(ui);
+    arma::uvec o_ix = n + o_indexing(ui);
+    sorted_index = o_ix;
+    arma::uvec parent_set = arma::join_vert(indexing(ui), o_par_ix);
+    
+    np = parent_set.n_elem;
+    ni = o_ix.n_elem;
+    
+    arma::mat o_xcoords_ix = io_xcoords.rows(o_ix);
+    arma::mat o_xcoords_par = io_xcoords.rows(parent_set);
+    
+    // 
+    arma::mat Coo = Correlationf(io_xcoords, o_ix, o_ix, theta, false, true);
+    arma::mat Cxx = Correlationc(o_xcoords_par, o_xcoords_par, theta, false, true);
+    arma::mat Cxxi = arma::inv_sympd(Cxx);
+    arma::mat Cox = Correlationc(o_xcoords_ix, o_xcoords_par, theta, false, false);
+    
+    arma::mat H = Cox * Cxxi;
+    arma::mat Ri = arma::inv_sympd(arma::symmatu(Coo - H * Cox.t()));
+    if(np > 0){
+      
+      arma::uvec sorted_parents = parent_set;//arma::sort(sortsort_order(parents_indexing(ui)));
+      
+      // locations to fill: indexing(ui) x parents_indexing(uj) 
+      arma::umat H_tripl_locs = arma::umat(ni * np, 2);
+      arma::mat H_tripl_val = arma::zeros(ni * np);
+      
+      for(int ix=0; ix < ni; ix++){
+        for(int jx=0; jx < np; jx++){
+          int vecix = arma::sub2ind(arma::size(ni, np), ix, jx);
+          H_tripl_locs(vecix, 0) = sorted_index(ix);//sortsort_order(indexing(ui)(ix));
+          H_tripl_locs(vecix, 1) = sorted_parents(jx);//sortsort_order(parents_indexing(ui)(jx));
+          H_tripl_val(vecix, 0) = H(ix, jx);
+        }
+      }
+      H_blockrow_tripls(h_ctr) = H_tripl_locs;
+      H_blockrow_vals(h_ctr) = H_tripl_val;
+      h_ctr++;  
+    }
+    
+    // locations to fill: indexing(ui) x parents_indexing(uj)
+    Ri_tripl_locs = arma::umat(ni * ni, 2);
+    Ri_tripl_val = arma::zeros(ni * ni);
+    for(int ix=0; ix < ni; ix++){
+      for(int jx=0; jx < ni; jx++){
+        int vecix = arma::sub2ind(arma::size(ni, ni), ix, jx);
+        Ri_tripl_locs(vecix, 0) = sorted_index(ix); //sortsort_order(indexing(ui)(ix));
+        Ri_tripl_locs(vecix, 1) = sorted_index(jx); //sortsort_order(indexing(ui)(jx));
+        Ri_tripl_val(vecix, 0) = Ri(ix, jx);
+      }
+    }
+    Ri_blockrow_tripls(ri_ctr) = Ri_tripl_locs;
+    Ri_blockrow_vals(ri_ctr) = Ri_tripl_val;
+    ri_ctr++;
+    
+  }
+  
+  end = std::chrono::steady_clock::now();
+  double timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  Rcpp::Rcout << "predict loop storing: " << timer << endl;
+  
+  start = std::chrono::steady_clock::now();
+  
+  int nall = io_xcoords.n_rows;
+  H = Eigen::SparseMatrix<double>(nall, nall);
+  Ri = Eigen::SparseMatrix<double>(nall, nall);
+  
+  arma::umat Hlocs = field_v_concatm(H_blockrow_tripls);
+  arma::vec Hvals = field_v_concatm(H_blockrow_vals);
+  arma::umat Rilocs = field_v_concatm(Ri_blockrow_tripls);
+  arma::vec Rivals = field_v_concatm(Ri_blockrow_vals);
+  
+  //Rcpp::Rcout << "triplets " << endl;
+  typedef Eigen::Triplet<double> T;
+  std::vector<T> tripletList_H;
+  tripletList_H.reserve(Hlocs.n_rows);
+  for(int i=0; i<Hlocs.n_rows; i++){
+    tripletList_H.push_back(T(Hlocs(i, 0), Hlocs(i, 1), Hvals(i)));
+  }
+  
+  std::vector<T> tripletList_Ri;
+  tripletList_Ri.reserve(Rilocs.n_rows);
+  for(int i=0; i<Rilocs.n_rows; i++){
+    tripletList_Ri.push_back(T(Rilocs(i, 0), Rilocs(i, 1), Rivals(i)));
+  }
+  
+  H.setFromTriplets(tripletList_H.begin(), tripletList_H.end());
+  Ri.setFromTriplets(tripletList_Ri.begin(), tripletList_Ri.end());
+  
+  end = std::chrono::steady_clock::now();
+  timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  Rcpp::Rcout << "setfromtriplets: " << timer << endl;
+  
+  start = std::chrono::steady_clock::now();
+  Eigen::SparseMatrix<double> I_eig(nall, nall);
+  I_eig.setIdentity();
+  //Ci = (I_eig - H).triangularView<Eigen::Lower>().transpose() *
+  //  Ri * (I_eig - H).triangularView<Eigen::Lower>();
+  PP_all = (I_eig - H).transpose() * Ri * (I_eig - H);
+  end = std::chrono::steady_clock::now();
+  timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  Rcpp::Rcout << "product: " << timer << endl;
+  
+  // submatrices
+  
+  PP_o = PP_all.block(n, n, no, no);
+  PP_ox = PP_all.block(n, 0, no, n);
+  
+  start = std::chrono::steady_clock::now();
+  solver.analyzePattern(PP_o);
+  end = std::chrono::steady_clock::now();
+  timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  Rcpp::Rcout << "pattern: " << timer << endl;
+  
+  start = std::chrono::steady_clock::now();
+  solver.factorize(PP_o);
+  end = std::chrono::steady_clock::now();
+  timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  Rcpp::Rcout << "factorize: " << timer << endl;
+  
+  start = std::chrono::steady_clock::now();
+  Eigen::MatrixXd we = armamat_to_matrixxd(w);
+  Eigen::MatrixXd oxw = PP_ox * we;
+  Eigen::MatrixXd pred_mean_e = -solver.solve(oxw);
+  arma::mat pred_mean = matrixxd_to_armamat(pred_mean_e);
+  end = std::chrono::steady_clock::now();
+  timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  Rcpp::Rcout << "solve & copy: " << timer << endl;
+  
+  return pred_mean;
+}
+
+*/
+arma::mat MGP::predict_via_precision(const MGP& out_mgp, const arma::vec& theta){
+  if(verbose & debug){
+    Rcpp::Rcout << "[predict_via_precision] start " << endl;
+  }
+  
+  std::chrono::steady_clock::time_point start;
+  std::chrono::steady_clock::time_point end;
+  int n = coords.n_rows;
+  int nk = n * k;
+  
+  arma::uvec linear_order = arma::regspace<arma::uvec>(0, n-1);
+  arma::uvec sortsort_order = //linear_order; //
+    arma::sort_index(arma::sort_index(membership));
+  
+  linear_sort_map = arma::join_horiz(linear_order, sortsort_order);
+  
+  start = std::chrono::steady_clock::now();
+  // K_cholcp_cache = invchol(Ri)
+  arma::field<arma::umat> H_blockrow_tripls(4 * n_blocks); //H blocks, R blocks, same for predictions 
+  arma::field<arma::mat> H_blockrow_vals(4 * n_blocks);
+  
+  int h_ctr = 0;
+  int ri_ctr = 0;
+  
+  arma::field<arma::uvec> o_indexing = out_mgp.indexing;
+  arma::field<arma::uvec> o_par_indexing = out_mgp.parents_indexing;
+  arma::mat o_xcoords = out_mgp.xcoords;
+  arma::mat io_xcoords = arma::join_vert(xcoords, o_xcoords);
+  
+  int no = o_xcoords.n_rows;
+  
+  for(int i=0; i<n_blocks; i++){
+    int ui = i;//block_names(i) - 1;
+    int ni = indexing(ui).n_elem;
+    int np = parents_indexing(ui).n_elem;
+    
+    arma::uvec sorted_index = //indexing(ui);//
+      arma::sort(sortsort_order(indexing(ui)));
+    
+    // in part
+    arma::mat chRit = ((*param_data.w_cond_chRi_ptr.at(ui)).slice(0));
+    if(np > 0){
+      
+      arma::uvec sorted_parents = //parents_indexing(ui);//
+        arma::sort(sortsort_order(parents_indexing(ui)));
+      
+      // locations to fill: indexing(ui) x parents_indexing(uj) 
+      arma::umat H_tripl_locs(ni * np, 2);
+      arma::mat H_tripl_val = arma::zeros(ni * np);
+      
+      arma::mat Hmod = chRit * ((*param_data.w_cond_mean_K_ptr.at(ui)).slice(0));
+      for(int ix=0; ix < ni; ix++){
+        for(int jx=0; jx < np; jx++){
+          int vecix = arma::sub2ind(arma::size(ni, np), ix, jx);
+          H_tripl_locs(vecix, 0) = sorted_index(ix);//sortsort_order(indexing(ui)(ix));
+          H_tripl_locs(vecix, 1) = sorted_parents(jx);//sortsort_order(parents_indexing(ui)(jx));
+          H_tripl_val(vecix, 0) = -Hmod(ix, jx);
+        }
+      }
+      H_blockrow_tripls(h_ctr) = H_tripl_locs;
+      H_blockrow_vals(h_ctr) = H_tripl_val;
+      h_ctr++;  
+    }
+    arma::umat H_tripl_locs(ni * ni, 2);
+    arma::mat H_tripl_val = arma::zeros(ni * ni);
+    for(int ix=0; ix < ni; ix++){
+      for(int jx=0; jx < ni; jx++){
+        int vecix = arma::sub2ind(arma::size(ni, ni), ix, jx);
+        H_tripl_locs(vecix, 0) = sorted_index(ix); //sortsort_order(indexing(ui)(ix));
+        H_tripl_locs(vecix, 1) = sorted_index(jx); //sortsort_order(indexing(ui)(jx));
+        H_tripl_val(vecix, 0) = chRit(ix, jx);
+      }
+    }
+    H_blockrow_tripls(h_ctr) = H_tripl_locs;
+    H_blockrow_vals(h_ctr) = H_tripl_val;
+    h_ctr++;  
+    
+    
+    // out part
+    
+    arma::uvec o_par_ix = n + o_par_indexing(ui);
+    arma::uvec o_ix = n + o_indexing(ui);
+    sorted_index = o_ix;
+    arma::uvec parent_set = arma::join_vert(indexing(ui), o_par_ix);
+    
+    np = parent_set.n_elem;
+    ni = o_ix.n_elem;
+    
+    arma::mat o_xcoords_ix = io_xcoords.rows(o_ix);
+    arma::mat o_xcoords_par = io_xcoords.rows(parent_set);
+    
+    // 
+    arma::mat Coo = Correlationf(io_xcoords, o_ix, o_ix, theta, false, true);
+    arma::mat Cxx = Correlationc(o_xcoords_par, o_xcoords_par, theta, false, true);
+    arma::mat Cxxi = arma::inv_sympd(Cxx);
+    arma::mat Cox = Correlationc(o_xcoords_ix, o_xcoords_par, theta, false, false);
+    
+    arma::mat H = Cox * Cxxi;
+    //arma::mat Ri = arma::inv_sympd(arma::symmatu(Coo - H * Cox.t()));
+    chRit = (arma::inv(arma::trimatl(arma::chol(arma::symmatu(Coo - H * Cox.t()), "lower"))));
+    arma::mat Hmod = chRit * H;
+    
+    if(np > 0){
+      
+      arma::uvec sorted_parents = parent_set;//arma::sort(sortsort_order(parents_indexing(ui)));
+      
+      // locations to fill: indexing(ui) x parents_indexing(uj) 
+      arma::umat H_tripl_locs = arma::umat(ni * np, 2);
+      arma::mat H_tripl_val = arma::zeros(ni * np);
+      
+      for(int ix=0; ix < ni; ix++){
+        for(int jx=0; jx < np; jx++){
+          int vecix = arma::sub2ind(arma::size(ni, np), ix, jx);
+          H_tripl_locs(vecix, 0) = sorted_index(ix);//sortsort_order(indexing(ui)(ix));
+          H_tripl_locs(vecix, 1) = sorted_parents(jx);//sortsort_order(parents_indexing(ui)(jx));
+          H_tripl_val(vecix, 0) = -Hmod(ix, jx);
+        }
+      }
+      H_blockrow_tripls(h_ctr) = H_tripl_locs;
+      H_blockrow_vals(h_ctr) = H_tripl_val;
+      h_ctr++;  
+    }
+    H_tripl_locs = arma::umat(ni * ni, 2);
+    H_tripl_val = arma::zeros(ni * ni);
+    for(int ix=0; ix < ni; ix++){
+      for(int jx=0; jx < ni; jx++){
+        int vecix = arma::sub2ind(arma::size(ni, ni), ix, jx);
+        H_tripl_locs(vecix, 0) = sorted_index(ix); //sortsort_order(indexing(ui)(ix));
+        H_tripl_locs(vecix, 1) = sorted_index(jx); //sortsort_order(indexing(ui)(jx));
+        H_tripl_val(vecix, 0) = chRit(ix, jx);
+      }
+    }
+    H_blockrow_tripls(h_ctr) = H_tripl_locs;
+    H_blockrow_vals(h_ctr) = H_tripl_val;
+    h_ctr++;  
+    
+    
+  }
+  
+  end = std::chrono::steady_clock::now();
+  double timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  Rcpp::Rcout << "predict loop storing: " << timer << endl;
+  
+  start = std::chrono::steady_clock::now();
+  
+  int nall = io_xcoords.n_rows;
+  H = Eigen::SparseMatrix<double>(nall, nall);
+  //Ri = Eigen::SparseMatrix<double>(nall, nall);
+  
+  arma::umat Hlocs = field_v_concatm(H_blockrow_tripls);
+  arma::vec Hvals = field_v_concatm(H_blockrow_vals);
+  
+  //Rcpp::Rcout << "triplets " << endl;
+  typedef Eigen::Triplet<double> T;
+  std::vector<T> tripletList_H;
+  tripletList_H.reserve(Hlocs.n_rows);
+  for(int i=0; i<Hlocs.n_rows; i++){
+    tripletList_H.push_back(T(Hlocs(i, 0), Hlocs(i, 1), Hvals(i)));
+  }
+  
+  
+  H.setFromTriplets(tripletList_H.begin(), tripletList_H.end());
+  
+  end = std::chrono::steady_clock::now();
+  timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  Rcpp::Rcout << "setfromtriplets: " << timer << endl;
+  
+  start = std::chrono::steady_clock::now();
+  PP_all = H.transpose() * H;
+  end = std::chrono::steady_clock::now();
+  timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  Rcpp::Rcout << "product 1: " << timer << endl;
+  
+  start = std::chrono::steady_clock::now();
+  Eigen::SparseMatrix<double> CC = H.block(n, 0, no, n);
+  Eigen::SparseMatrix<double> DD = H.block(n, n, no, no);
+  
+  PP_o = DD.transpose() * DD;
+  PP_ox = DD.transpose() * CC; 
+  end = std::chrono::steady_clock::now();
+  timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  Rcpp::Rcout << "product 2: " << timer << endl;
+  
+  // submatrices
+  
+  
+  
+  start = std::chrono::steady_clock::now();
+  solver.analyzePattern(PP_o);
+  end = std::chrono::steady_clock::now();
+  timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  Rcpp::Rcout << "pattern: " << timer << endl;
+  
+  start = std::chrono::steady_clock::now();
+  solver.factorize(PP_o);
+  end = std::chrono::steady_clock::now();
+  timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  Rcpp::Rcout << "factorize: " << timer << endl;
+  
+  start = std::chrono::steady_clock::now();
+  Eigen::MatrixXd we = armamat_to_matrixxd(w);
+  Eigen::MatrixXd oxw = PP_ox * we;
+  Eigen::MatrixXd pred_mean_e = -solver.solve(oxw);
+  arma::mat pred_mean = matrixxd_to_armamat(pred_mean_e);
+  end = std::chrono::steady_clock::now();
+  timer = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+  Rcpp::Rcout << "solve & copy: " << timer << endl;
+  
+  return pred_mean;
 }
 
 

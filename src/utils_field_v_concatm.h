@@ -66,7 +66,7 @@ inline arma::vec drowcol_s(const arma::field<arma::mat>& diag_blocks){
   drow = arma::cumsum(drow);
   return drow;
 }
-
+/*
 inline arma::mat field_v_concatm(arma::field<arma::mat> const& fieldmats){
   // takes a field of matrices (same n cols) and outputs a single matrix concatenating all
   arma::vec ddims = drowcol_s(fieldmats);
@@ -78,7 +78,7 @@ inline arma::mat field_v_concatm(arma::field<arma::mat> const& fieldmats){
     }
   }
   return result;
-}
+}*/
 
 inline arma::cube field_v_concatc(arma::field<arma::cube> const& fieldcubes){
   // takes a field of matrices (same n cols) and outputs a single matrix concatenating all
@@ -96,10 +96,13 @@ inline arma::cube field_v_concatc(arma::field<arma::cube> const& fieldcubes){
 template <class T>
 inline T field_v_concatm(arma::field<T> const& fieldmats){
   // takes a field of matrices (same n cols) and outputs a single matrix concatenating all
+  Rcpp::Rcout << "field_v_concatm " << endl;
   arma::uvec ddims = drowcol_s(fieldmats);
+  Rcpp::Rcout << "1 " << endl;
   T result = arma::zeros<T>(ddims(fieldmats.n_elem), fieldmats(0).n_cols);
   //#pragma omp parallel for //**
   for(int j=0; j<fieldmats.n_elem; j++){
+    Rcpp::Rcout << j << " 2 " << endl;
     if(fieldmats(j).n_rows>0){
       result.rows(ddims(j), ddims(j+1)-1) = fieldmats(j);
     }

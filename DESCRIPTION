@@ -7,7 +7,8 @@ Author: Michele Peruzzi
 Maintainer: Michele Peruzzi <michele.peruzzi@duke.edu>
 Description: Fits Bayesian Graph Machine Regression models. Funded by ERC grant 856506 and NIH grant R01ES028804.
 License: GPL (>= 3)
-Imports: Rcpp (>= 1.0.5), stats, dplyr, glue, rlang, magrittr, FNN, Matrix
+Depends: Matrix
+Imports: Rcpp (>= 1.0.5), stats, dplyr, glue, rlang, magrittr
 Suggests: ggplot2, abind, rmarkdown, knitr, tidyr
 LinkingTo: Rcpp, RcppArmadillo, RcppEigen
 VignetteBuilder: knitr

@@ -46,7 +46,11 @@ template <class T>
 inline T field_v_concatm(arma::field<T> const& fieldmats){
   // takes a field of matrices (same n cols) and outputs a single matrix concatenating all
   arma::uvec ddims = drowcol_s(fieldmats);
-  T result = arma::zeros<T>(ddims(fieldmats.n_elem), fieldmats(0).n_cols);
+  int ncol=0;
+  for(int j=0; (j<fieldmats.n_elem) & (ncol==0); j++){
+    ncol = fieldmats(j).n_cols;
+  }
+  T result = arma::zeros<T>(ddims(fieldmats.n_elem), ncol);
   //#pragma omp parallel for //**
 
   for(int j=0; j<fieldmats.n_elem; j++){

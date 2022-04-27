@@ -51,19 +51,15 @@ arma::field<arma::uvec> split_ap(arma::uvec& membership, const arma::mat& coords
 MGP::MGP(const arma::mat& target_coords, 
          const arma::mat& x_coords,
          const arma::field<arma::vec>& axis_partition,
-         const arma::umat& na_mat,
-         bool cached, 
          const arma::mat& theta_in,
          bool adapting_theta,
          const arma::mat& metrop_theta_sd,
          const arma::mat& metrop_theta_bounds,
-         bool use_ps_in,
          int space_dim, bool v_in, bool d_in){
   
   verbose = v_in;
   debug = d_in;
   hl2pi = -.5 * log(2.0 * M_PI);
-  use_ps = use_ps_in;
   
   k = theta_in.n_cols;
   dd = space_dim;
@@ -77,8 +73,8 @@ MGP::MGP(const arma::mat& target_coords,
   xcoords = x_coords;
   
   thresholds = axis_partition;
-  init_partitiondag(target_coords, axis_partition, na_mat);
-  init_cache(cached);
+  init_partitiondag(target_coords, axis_partition);
+  init_cache(false);
   
   n_blocks = indexing.n_elem;
   
@@ -88,16 +84,20 @@ MGP::MGP(const arma::mat& target_coords,
   // RAMA for theta
   theta_mcmc_counter = 0;
   theta_unif_bounds = metrop_theta_bounds;
-  theta_metrop_sd = metrop_theta_sd;
-  theta_adapt = RAMAdapt(theta_in.n_elem, theta_metrop_sd, 0.24);
+  
+  int nt = metrop_theta_sd.n_rows;
+  arma::mat param_theta_sd = arma::zeros(nt + 1, nt + 1);
+  param_theta_sd.submat(0, 0, nt-1, nt-1) = metrop_theta_sd;
+  param_theta_sd(nt, nt) = metrop_theta_sd(0,0);
+  theta_metrop_sd = param_theta_sd;
+  theta_adapt = RAMAdapt(theta_in.n_elem + 1, theta_metrop_sd, 0.24); // +1 for tausq
   theta_adapt_active = adapting_theta;
 }
 
 void MGP::init_partitiondag(const arma::mat& target_coords, 
-                            const arma::field<arma::vec>& axis_partition,
-                            const arma::umat& na_mat){
+                            const arma::field<arma::vec>& axis_partition){
   
-  int q = na_mat.n_cols;
+  //int q = na_mat.n_cols;
   coords = target_coords;
   indexing = split_ap(membership, target_coords, axis_partition);
   n_blocks = (indexing.n_rows +.0)*(indexing.n_cols +.0);
@@ -108,35 +108,12 @@ void MGP::init_partitiondag(const arma::mat& target_coords,
   
   // prepare stuff for NA management
   if(verbose & debug){
-    Rcpp::Rcout << "[na_study] start \n"; 
+    Rcpp::Rcout << "[block_ct_obs] start \n"; 
   }
-  na_1_blocks = arma::field<arma::uvec> (arma::size(indexing));
-  na_0_blocks = arma::field<arma::uvec> (arma::size(indexing));
-  na_ix_blocks = arma::field<arma::uvec> (arma::size(indexing));
-  //n_loc_ne_blocks = 0;
   block_ct_obs = arma::zeros<arma::umat>(indexing.n_rows, indexing.n_cols);
-  
   for(unsigned int i=0; i<indexing.n_rows; i++){
     for(unsigned int j=0; j<indexing.n_cols; j++){
-      arma::umat yvec = na_mat.rows(indexing(i,j));
-      
-      na_1_blocks(i,j) = arma::zeros<arma::uvec>(yvec.n_rows);
-      na_0_blocks(i,j) = arma::zeros<arma::uvec>(yvec.n_rows);
-      // consider NA if all margins are missing
-      // otherwise it's available
-      for(unsigned int ix=0; ix<yvec.n_rows; ix++){
-        arma::uvec yfinite_row = arma::find(yvec.row(ix) == 1);
-        if(yfinite_row.n_elem > 0){
-          // at least one is available
-          na_1_blocks(i,j)(ix) = 1;
-        }
-        if(yfinite_row.n_elem < q){
-          // at least one is missing
-          na_0_blocks(i,j)(ix) = 1;
-        }
-      }
-      na_ix_blocks(i,j) = arma::find(na_1_blocks(i,j) == 1); 
-      block_ct_obs(i,j) = arma::accu(na_1_blocks(i,j));
+      block_ct_obs(i,j) = indexing(i,j).n_elem;
     }
   }
   
@@ -246,33 +223,10 @@ void MGP::refresh_partitiondag(const arma::umat& na_mat){
   parents_indexing = arma::field<arma::uvec> (arma::size(indexing));
   children = arma::field<arma::vec> (arma::size(indexing));
   
-  
-  na_1_blocks = arma::field<arma::uvec> (arma::size(indexing));
-  na_0_blocks = arma::field<arma::uvec> (arma::size(indexing));
-  na_ix_blocks = arma::field<arma::uvec> (arma::size(indexing));
-  //n_loc_ne_blocks = 0;
   block_ct_obs = arma::zeros<arma::umat>(indexing.n_rows, indexing.n_cols);
-  
   for(unsigned int i=0; i<indexing.n_rows; i++){
     for(unsigned int j=0; j<indexing.n_cols; j++){
-      arma::umat yvec = na_mat.rows(indexing(i,j));
-      na_1_blocks(i,j) = arma::zeros<arma::uvec>(yvec.n_rows);
-      na_0_blocks(i,j) = arma::zeros<arma::uvec>(yvec.n_rows);
-      // consider NA if all margins are missing
-      // otherwise it's available
-      for(unsigned int ix=0; ix<yvec.n_rows; ix++){
-        arma::uvec yfinite_row = arma::find(yvec.row(ix) == 1);
-        if(yfinite_row.n_elem > 0){
-          // at least one is available
-          na_1_blocks(i,j)(ix) = 1;
-        }
-        if(yfinite_row.n_elem < q){
-          // at least one is missing
-          na_0_blocks(i,j)(ix) = 1;
-        }
-      }
-      na_ix_blocks(i,j) = arma::find(na_1_blocks(i,j) == 1); 
-      block_ct_obs(i,j) = arma::accu(na_1_blocks(i,j));
+      block_ct_obs(i,j) = indexing(i,j).n_elem;
     }
   }
   
@@ -531,7 +485,7 @@ void MGP::metrop_theta(){
 
 
 void MGP::prior_sample(MeshDataLMC& data){
-  
+  // sample from MGP prior
   w = arma::zeros(coords.n_rows, k);
   
   if(verbose & debug){
@@ -546,33 +500,22 @@ void MGP::prior_sample(MeshDataLMC& data){
     Rcpp::stop("Something went wrong went getting the conditional Gaussians. Try different theta? ");
   }
   
-#ifdef _OPENMP
-#pragma omp parallel for 
-#endif
-  for(unsigned int i = 0; i<n_blocks; i++){
-    
-    update_block_covpars(i, data);
-  }
-  
   // assuming that the ordering in block_names is the ordering of the product of conditional densities
   for(unsigned int i=0; i<indexing.n_rows; i++){
     for(unsigned int j=0; j<indexing.n_cols; j++){
       unsigned int u = arma::sub2ind(arma::size(indexing.n_rows, indexing.n_cols), i, j);
-      
+      update_block_covpars(u, data);
       arma::mat wtemp = arma::zeros(indexing(u).n_elem, k);
       arma::mat wparent;
       if(parents_indexing(u).n_elem > 0){
         wparent = w.rows(parents_indexing(u)); 
       }
       for(int h=0; h<k; h++){
-        arma::mat Sigi_tot = (*data.w_cond_prec_ptr.at(u)).slice(h); //
-        
         arma::mat w_mean = arma::zeros(indexing(u).n_elem);
         if(parents_indexing(u).n_elem > 0){
           w_mean = (*data.w_cond_mean_K_ptr.at(u)).slice(h) * wparent.col(h);
         } 
-        arma::mat Sigi_chol = arma::inv(arma::trimatl(arma::chol(Sigi_tot, "lower")));
-        
+        arma::mat Sigi_chol = (*data.w_cond_chR_ptr.at(u)).slice(h); //
         // sample
         arma::vec rnvec = arma::randn(indexing(u).n_elem);
         wtemp.col(h) = w_mean + Sigi_chol.t() * rnvec;  
@@ -587,9 +530,9 @@ void MGP::prior_sample(MeshDataLMC& data){
     Rcpp::Rcout << "[w_prior_sample] loops \n";
   }
   
-  
-  
 }
+
+
 
 arma::mat MGP::block_fullconditional_prior_ci(int u, MeshDataLMC& data){
   //
@@ -824,6 +767,8 @@ void MGP::init_meshdata(MeshDataLMC& data, const arma::mat& theta_in){
       data.AK_uP(i)(1) = arma::zeros(indexing(xi, xj).n_elem, indexing(xi, xj+1).n_elem, k);
     }
   }
+  data.w_cond_chR_ptr.reserve(n_blocks);
+  data.w_cond_chRi_ptr.reserve(n_blocks);
   data.w_cond_prec_ptr.reserve(n_blocks);
   data.w_cond_mean_K_ptr.reserve(n_blocks);
   data.w_cond_prec_parents_ptr.reserve(n_blocks);
@@ -831,6 +776,8 @@ void MGP::init_meshdata(MeshDataLMC& data, const arma::mat& theta_in){
   for(unsigned int i=0; i<n_blocks; i++){
     arma::cube jibberish = arma::zeros(1,1,1);
     data.w_cond_prec_ptr.push_back(&jibberish);
+    data.w_cond_chR_ptr.push_back(&jibberish);
+    data.w_cond_chRi_ptr.push_back(&jibberish);
     data.w_cond_mean_K_ptr.push_back(&jibberish);
     data.w_cond_prec_parents_ptr.push_back(&jibberish);
   }
@@ -856,10 +803,16 @@ void MGP::init_meshdata(MeshDataLMC& data, const arma::mat& theta_in){
   
   data.H_cache = arma::field<arma::cube> (kr_caching.n_elem);
   data.Ri_cache = arma::field<arma::cube> (kr_caching.n_elem);
+  data.chRi_cache = arma::field<arma::cube> (kr_caching.n_elem);
+  data.chR_cache = arma::field<arma::cube> (kr_caching.n_elem);
   data.Kppi_cache = arma::field<arma::cube> (kr_caching.n_elem);
   for(unsigned int i=0; i<kr_caching.n_elem; i++){
     int u = kr_caching(i);
     data.Ri_cache(i) = 
+      arma::zeros(indexing(u).n_elem, indexing(u).n_elem, k);
+    data.chRi_cache(i) = 
+      arma::zeros(indexing(u).n_elem, indexing(u).n_elem, k);
+    data.chR_cache(i) = 
       arma::zeros(indexing(u).n_elem, indexing(u).n_elem, k);
     if(parents_indexing(u).n_elem > 0){
       data.H_cache(i) = 
@@ -881,7 +834,6 @@ bool MGP::refresh_cache(MeshDataLMC& data){
   if(verbose & debug){
     Rcpp::Rcout << "[refresh_cache] start.\n";
   }
-  
   
   data.Ri_chol_logdet = arma::zeros(kr_caching.n_elem);
   
@@ -925,8 +877,8 @@ bool MGP::refresh_cache(MeshDataLMC& data){
           
           int ccfound = findcc(u);
           //arma::cube Cxx = CC_cache(ccfound);
-          
-          data.Ri_chol_logdet(i) = CviaKron_HRi_(data.H_cache(i), data.Ri_cache(i), 
+          data.Ri_chol_logdet(i) = CviaKron_HRi_(data.H_cache(i), 
+                              data.Ri_cache(i), data.chR_cache(i), data.chRi_cache(i),
                               data.Kppi_cache(i), data.CC_cache(ccfound),
                               xcoords, indexing(u), parents_indexing(u), k, data.theta, use_ps);
         }
@@ -954,7 +906,6 @@ bool MGP::refresh_cache(MeshDataLMC& data){
 }
 
 bool MGP::get_mgplogdens_comps(MeshDataLMC& data){
-  
   bool acceptable = refresh_cache(data);
   if(acceptable){
     acceptable = calc_mgplogdens(data);
@@ -971,10 +922,11 @@ void MGP::update_block_covpars(int u, MeshDataLMC& data){
   // given block u as input, this function updates H and R
   // which will be used later to compute logp(w | theta)
   int krfound = findkr(u);
-  
   //w_cond_prec(u) = Ri_cache(krfound);
-  data.w_cond_prec_ptr.at(u) = &data.Ri_cache(krfound);
   
+  data.w_cond_prec_ptr.at(u) = &data.Ri_cache(krfound);
+  data.w_cond_chRi_ptr.at(u) = &data.chRi_cache(krfound);
+  data.w_cond_chR_ptr.at(u) = &data.chR_cache(krfound);
   data.logdetCi_comps(u) = data.Ri_chol_logdet(krfound);
   
   if( parents_indexing(u).n_elem > 0 ){
@@ -1051,11 +1003,28 @@ double MGP::quadratic_form(const arma::mat& w1, const arma::mat& w2, MeshDataLMC
 }
 
 
+void MGP::update_all_block_covpars(MeshDataLMC& data){
+  // called for a proposal of theta
+  // updates involve the covariances
+  // and Sigma for adjusting the error terms
+#ifdef _OPENMP
+#pragma omp parallel for 
+#endif
+  for(int i=0; i<n_blocks; i++){
+    if(block_ct_obs(i) > 0){
+      update_block_covpars(i, data);
+    } 
+  }
+  
+  if(verbose & debug){
+    Rcpp::Rcout << "[update_all_block_covpars] done \n";
+  }
+}
+
 bool MGP::calc_mgplogdens(MeshDataLMC& data){
   // called for a proposal of theta
   // updates involve the covariances
   // and Sigma for adjusting the error terms
-  
 #ifdef _OPENMP
 #pragma omp parallel for 
 #endif

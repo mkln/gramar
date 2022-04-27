@@ -1,29 +1,20 @@
-gramar <- function(y, x, k=NULL,
-             family = "gaussian",
+gramar <- function(y, x, 
              axis_partition = NULL, 
+             proj="pca",
              block_size = 30,
-             grid_size=NULL,
-             grid_custom = NULL,
              n_samples = 1000,
              n_burnin = 100,
              n_thin = 1,
              n_threads = 4,
              verbose = 0,
-             predict_everywhere = FALSE,
-             settings = list(adapting=TRUE,
-                                ps=TRUE, saving=TRUE, low_mem=FALSE, hmc=4),
+             settings = list(adapting=TRUE),
              prior = list(beta=NULL, tausq=NULL, sigmasq = NULL,
-                          phi=NULL, a=NULL, nu = NULL,
-                          toplim = NULL, btmlim = NULL, set_unif_bounds=NULL),
+                          phi=NULL, toplim = NULL, btmlim = NULL, set_unif_bounds=NULL),
              starting = list(beta=NULL, tausq=NULL, theta=NULL, 
-                             lambda=NULL, v=NULL,  a=NULL, nu = NULL,
-                             mcmcsd=.05, mcmc_startfrom=0),
+                             mcmcsd=.1, mcmc_startfrom=0),
              debug = list(sample_beta=TRUE, sample_tausq=TRUE, 
-                          sample_theta=TRUE, sample_w=TRUE,sample_lambda=TRUE,
-                          verbose=FALSE, debug=FALSE)
+                          sample_theta=TRUE, verbose=FALSE, debug=FALSE)
 ){
-
-  require(Matrix)
   
   # init
   if(verbose > 0){
@@ -50,27 +41,35 @@ gramar <- function(y, x, k=NULL,
     mcmc_burn <- n_burnin
     mcmc_thin <- n_thin
     
-    which_hmc    <- settings$hmc %>% set_default(4)
-    if(which_hmc > 4){
-      warning("Invalid HMC algorithm choice. Choose settings$hmc in {1,2,3,4}")
-      which_hmc <- 4
-    }
-
     mcmc_adaptive    <- settings$adapting %>% set_default(TRUE)
     mcmc_verbose     <- debug$verbose %>% set_default(FALSE)
     mcmc_debug       <- debug$debug %>% set_default(FALSE)
     saving <- settings$saving %>% set_default(TRUE)
-    low_mem <- settings$low_mem %>% set_default(FALSE)
     
-    debugdag <- 1#debug$dag %>% set_default(1)
+    p <- ncol(x)
+    sumto1 <- function(x) x/sum(x)
+    orthproj <- function(x) (diag(nrow(x)) - x %*% solve(crossprod(x), t(x)))
     
     proj_dim <- 2
-    X_pca <- prcomp(x)
-    coords <- X_pca$x[,1:proj_dim] %>% as.matrix()
+    x_centers <- x %>% apply(2, mean)
+    x_centered <- x %>% apply(2, function(x) x-mean(x))
+    if(proj == "pca"){
+      X_pca <- prcomp(x_centered)
+      coords <- X_pca$x[,1:proj_dim] %>% as.matrix()
+      
+      proj_coeff <- X_pca$rotation[,1:2]
+    } else {
+      base1 <- runif(p) %>% sumto1 %>% matrix(ncol=1)
+      base2 <- crossprod(orthproj(base1), ( runif(p) %>% sumto1 %>% matrix(ncol=1) ))
+      
+      proj_coeff <- cbind(base1, base2)
+      coords <- x_centered %*% proj_coeff
+    }
+    
     coords %<>% as.matrix()
     
     dd             <- ncol(coords)
-    p              <- ncol(x)
+    
     
     # data management part 0 - reshape/rename
     if(is.null(dim(y))){
@@ -89,7 +88,7 @@ gramar <- function(y, x, k=NULL,
       mcmc_print_every <- 0
     } else {
       if(verbose <= 20){
-        mcmc_tot <- mcmc_burn + mcmc_thin * mcmc_keep
+        mcmc_tot <- mcmc_burn + mcmc_keep
         mcmc_print_every <- 1+round(mcmc_tot / verbose)
       } else {
         if(is.infinite(verbose)){
@@ -99,7 +98,6 @@ gramar <- function(y, x, k=NULL,
         }
       }
     }
-    
     
     if(is.null(colnames(x))){
       orig_X_colnames <- colnames(x) <- paste0('X_', 1:ncol(x))
@@ -115,33 +113,10 @@ gramar <- function(y, x, k=NULL,
       colnames(coords)     <- paste0('Var', 1:dd)
     }
     
-    q              <- ncol(y)
-    k              <- ifelse(is.null(k), q, k)
+    q <- 1
+    k <- 1
     
-    # family id 
-    family <- if(length(family)==1){rep(family, q)} else {family}
-    
-    if(all(family == "gaussian")){ 
-      use_ps <- settings$ps %>% set_default(TRUE)
-    } else {
-      use_ps <- settings$ps %>% set_default(FALSE)
-    }
-    
-    family_in <- data.frame(family=family)
-    available_families <- data.frame(id=0:4, family=c("gaussian", "poisson", "binomial", "beta", "negbinomial"))
-    
-    suppressMessages(family_id <- family_in %>% 
-                       left_join(available_families, by=c("family"="family")) %>% pull(.data$id))
-    
-    latent <- "gaussian"
-    if(!(latent %in% c("gaussian"))){
-      stop("Latent process not recognized. Choose 'gaussian'")
-    }
-    
-    # for spatial data: matern or expon, for spacetime: gneiting 2002 
-    #n_par_each_process <- ifelse(dd==2, 1, 3) 
-    
-    nr             <- nrow(x)
+    nr <- nrow(x)
     
     if(length(axis_partition) == 1){
       axis_partition <- rep(axis_partition, dd)
@@ -150,53 +125,31 @@ gramar <- function(y, x, k=NULL,
       axis_partition <- rep(round((nr/block_size)^(1/dd)), dd)
     }
     
-    # -- heuristics for gridded data --
-    # if we observed all unique combinations of coordinates, this is how many rows we'd have
-    heuristic_gridded <- prod( coords %>% apply(2, function(x) length(unique(x))) )
-    # if data are not gridded, then the above should be MUCH larger than the number of rows
-    # if we're not too far off maybe the dataset is actually gridded
-    if(heuristic_gridded*0.5 < nrow(coords)){
-      data_likely_gridded <- TRUE
-    } else {
-      data_likely_gridded <- FALSE
-    }
-    if(ncol(coords) == 3){
-      # with time, check if there's equal spacing
-      timepoints <- coords[,3] %>% unique()
-      time_spacings <- timepoints %>% sort() %>% diff() %>% round(5) %>% unique()
-      if(length(time_spacings) < .1 * length(timepoints)){
-        data_likely_gridded <- TRUE
-      }
-    }
-    
-    use_cache <- TRUE 
-    
     # what are we sampling
-    sample_w       <- debug$sample_w %>% set_default(TRUE)
     sample_beta    <- debug$sample_beta %>% set_default(TRUE)
     sample_tausq   <- debug$sample_tausq %>% set_default(TRUE)
     sample_theta   <- debug$sample_theta %>% set_default(TRUE)
-    sample_lambda  <- debug$sample_lambda %>% set_default(TRUE)
 
   }
 
   # data management pt 2
   if(1){
-    yrownas <- apply(y, 1, function(i) ifelse(sum(is.na(i))==q, NA, 1))
-    na_which <- ifelse(!is.na(yrownas), 1, NA)
-    simdata <- data.frame(ix=1:nrow(coords)) %>% 
-      cbind(coords, y, na_which, x) %>% 
-      as.data.frame()
-  
+    if(any(is.na(y))){
+      stop("Output variable contains NA values.")
+    }
+    if(any(is.na(x))){
+      stop("Input variables contain NA values.")
+    }
     if(length(axis_partition) < ncol(coords)){
       stop("Error: axis_partition not specified for all axes.")
     }
     
-    absize <- round(nrow(simdata)/prod(axis_partition))
-
-    
-    simdata %<>% 
+    simdata <- data.frame(ix=1:nrow(coords)) %>% 
+      cbind(coords, y, x) %>% 
+      as.data.frame() %>%
       dplyr::arrange(!!!rlang::syms(paste0("Var", 1:dd)))
+
+    absize <- round(nrow(simdata)/prod(axis_partition))
     
     # Domain partitioning and gibbs groups
     fixed_thresholds <- 1:dd %>% lapply(function(i) kthresholdscp(coords[,i], axis_partition[i])) 
@@ -205,24 +158,6 @@ gramar <- function(y, x, k=NULL,
   
   if(1){
     # prior and starting values for mcmc
-    
-    # nu
-    if(is.null(prior$nu)){
-      if(is.null(starting$nu)){
-        start_nu <- 1.1
-      } else {
-        start_nu <- starting$nu
-      }
-      nu_limits <- c(1,1.5)
-    } else {
-      nu_limits <- prior$nu
-      if(is.null(starting$nu)){
-        start_nu <- mean(nu_limits)
-      } else {
-        start_nu <- starting$nu
-      }
-    }
-    
     
     # sigmasq
     if(is.null(prior$sigmasq)){
@@ -242,7 +177,7 @@ gramar <- function(y, x, k=NULL,
     }
     
     if(is.null(prior$phi)){
-      phi_limits <- c(1e-5, 2)
+      phi_limits <- c(1e-5, 20)
     } else {
       phi_limits <- prior$phi
     }
@@ -315,7 +250,7 @@ gramar <- function(y, x, k=NULL,
     
     n_par_each_process <- nrow(start_theta)
     if(is.null(starting$mcmcsd)){
-      mcmc_mh_sd <- diag(k * n_par_each_process) * 0.05
+      mcmc_mh_sd <- diag(k * n_par_each_process) * 0.2
     } else {
       if(length(starting$mcmcsd) == 1){
         mcmc_mh_sd <- diag(k * n_par_each_process) * starting$mcmcsd
@@ -325,28 +260,9 @@ gramar <- function(y, x, k=NULL,
     }
     
     if(is.null(starting$tausq)){
-      start_tausq  <- family %>% sapply(function(ff) if(ff == "gaussian"){.1} else {1})
+      start_tausq  <- 1
     } else {
       start_tausq  <- starting$tausq
-    }
-    
-    if(is.null(starting$lambda)){
-      start_lambda <- matrix(0, nrow=q, ncol=k)
-      diag(start_lambda) <- if(use_ps){10} else {1}
-    } else {
-      start_lambda <- starting$lambda
-    }
-    
-    if(is.null(starting$lambda_mask)){
-      if(k<=q){
-        lambda_mask <- matrix(0, nrow=q, ncol=k)
-        lambda_mask[lower.tri(lambda_mask)] <- 1
-        diag(lambda_mask) <- 1 #*** 
-      } else {
-        stop("starting$lambda_mask needs to be specified")
-      }
-    } else {
-      lambda_mask <- starting$lambda_mask
     }
     
     if(is.null(starting$mcmc_startfrom)){
@@ -355,14 +271,6 @@ gramar <- function(y, x, k=NULL,
       mcmc_startfrom <- starting$mcmc_startfrom
     }
     
-    if(is.null(starting$v)){
-      start_v <- matrix(0, nrow = nrow(simdata), ncol = k)
-    } else {
-      # this is used to restart MCMC
-      # assumes the ordering and the sizing is correct, 
-      # so no change is necessary and will be input directly to mcmc
-      start_v <- starting$v #%>% matrix(ncol=q)
-    }
   }
   
   
@@ -400,13 +308,14 @@ gramar <- function(y, x, k=NULL,
     cat("Sending to MCMC.\n")
   }
   
-  mcmc_run <- gramar_mcmc_collapsed
+  mcmc_run <- gramar:::gramar_mcmc_collapsed
+  
+
   
   comp_time <- system.time({
-      results <- mcmc_run(y, family_id, x, coords, 
+      results <- mcmc_run(y, x, coords, 
                           
                           fixed_thresholds,
-                          k,
                               
                           
                               set_unif_bounds,
@@ -416,13 +325,7 @@ gramar <- function(y, x, k=NULL,
                               sigmasq_ab,
                               tausq_ab,
                           
-                              start_v, 
-                          
-                              start_lambda,
-                              lambda_mask,
-                          
                               start_theta,
-                          
                               start_beta,
                               start_tausq,
                               
@@ -434,22 +337,15 @@ gramar <- function(y, x, k=NULL,
                               
                               n_threads,
                               
-                              which_hmc,
                               mcmc_adaptive, # adapting
-                              
-                              use_cache,
-                          
-                              use_ps,
                               
                               mcmc_verbose, mcmc_debug, # verbose, debug
                               mcmc_print_every, # print all iter
-                              low_mem,
+                          
                               # sampling of:
                               # beta tausq sigmasq theta w
-                              sample_beta, sample_tausq, 
-                              sample_lambda,
-                              sample_theta, 
-                              sample_w) 
+                              sample_beta,
+                              sample_theta) 
     })
   
   if(saving){
@@ -460,20 +356,16 @@ gramar <- function(y, x, k=NULL,
       anonList
     }
     
-    saved <- listN(y, x, coords, k,
-                    fixed_thresholds,
-                   family,
-      
-                   
+    order_sort_ix <- order(sort_ix)
+    saved <- listN(y[order_sort_ix], 
+                   x[order_sort_ix,], 
+                   coords[order_sort_ix,],
+
+                   sort_ix,
       set_unif_bounds,
       beta_Vi, 
       
       tausq_ab,
-      
-      start_v, 
-      
-      start_lambda,
-      lambda_mask,
       
       start_theta,
       start_beta,
@@ -481,7 +373,7 @@ gramar <- function(y, x, k=NULL,
       
       mcmc_mh_sd,
       
-      mcmc_keep, mcmc_burn, mcmc_thin,
+      mcmc_keep, mcmc_burn, 
       
       mcmc_startfrom,
       
@@ -489,26 +381,29 @@ gramar <- function(y, x, k=NULL,
       
       mcmc_adaptive, # adapting
       
-      
-      use_ps,
-      
       mcmc_verbose, mcmc_debug, # verbose, debug
       mcmc_print_every, # print all iter
       # sampling of:
       # beta tausq sigmasq theta w
       sample_beta, sample_tausq, 
-      sample_lambda,
-      sample_theta, sample_w,
+      sample_theta,
       fixed_thresholds)
   } else {
     saved <- "Model data not saved."
   }
   
-  returning <- list(coordsdata = coordsdata,
+  
+  results$w_mcmc <- results$w_mcmc[order_sort_ix,]
+  
+  returning <- list(coordsdata = coordsdata[order_sort_ix,],
+                    coordsdata_or = coordsdata,
+                    proj_coeff = proj_coeff,
+                    x_centers = x_centers,
+                    fixed_thresholds = fixed_thresholds,
                     savedata = saved) %>% 
     c(results)
   
-  class(returning) <- "spmeshed"
+  class(returning) <- "gramar"
   
   return(returning) 
     

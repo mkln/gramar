@@ -17,7 +17,7 @@ importFrom(dplyr, "n")
 importFrom(dplyr, "mutate")
 importFrom(dplyr, "pull")
 importFrom(stats, "prcomp")
-importFrom(FNN, "get.knnx")
+#importFrom(FNN, "get.knnx")
 
 #S3method("predict", "spmeshed")
 

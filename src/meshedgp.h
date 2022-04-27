@@ -6,7 +6,6 @@
 
 #include "RcppArmadillo.h"
 
-
 #include "distrib_vecrandom.h"
 #include "mcmc_ramadapt.h"
 
@@ -17,7 +16,7 @@
 
 
 #include <RcppEigen.h>
-//#include <Eigen/CholmodSupport>
+#include <Eigen/CholmodSupport>
 
 //#include "utils_field_v_concatm.h"
 
@@ -29,6 +28,7 @@ arma::field<arma::uvec> split_ap(const arma::mat& coords, const arma::field<arma
 
 struct MeshDataLMC {
   arma::mat theta; 
+  
   arma::vec nu;
   
   // x coordinates here
@@ -38,9 +38,13 @@ struct MeshDataLMC {
   arma::field<arma::cube> Kxxi_cache; // Ci(x,x)
   arma::field<arma::cube> H_cache; // C(x,p) Ci(p,p)
   arma::field<arma::cube> Ri_cache; // ( C(x,x) - C(x,p)Ci(p,p)C(p,x) )^{-1}
+  arma::field<arma::cube> chR_cache;
+  arma::field<arma::cube> chRi_cache;
   arma::field<arma::cube> Kppi_cache; // Ci(p,p)
   arma::vec Ri_chol_logdet;
   
+  std::vector<arma::cube *> w_cond_chR_ptr;
+  std::vector<arma::cube *> w_cond_chRi_ptr;
   std::vector<arma::cube *> w_cond_prec_ptr;
   std::vector<arma::cube *> w_cond_mean_K_ptr;
   std::vector<arma::cube *> w_cond_prec_parents_ptr;
@@ -58,10 +62,14 @@ struct MeshDataLMC {
   
   // for collapsed sampler
   Eigen::SparseMatrix<double> Citsqi;
+  //Eigen::SparseMatrix<double> Cidebug;
   //Eigen::SparseMatrix<double> Ciplustau2i;
   double Citsqi_ldet;
   arma::mat Citsqi_solveX;
-  arma::mat Citsqi_solveyXB;
+  arma::mat Citsqi_solvey;
+  arma::mat Citsqi_solvern;
+  arma::mat bpost_Sichol;
+  arma::mat bpost_meancore;
   double collapsed_ldens;
   
   // w cache
@@ -83,7 +91,7 @@ inline Eigen::MatrixXd armamat_to_matrixxd(arma::mat arma_A){
 inline arma::mat matrixxd_to_armamat(Eigen::MatrixXd eigen_A){
   
   arma::mat arma_B = arma::mat(eigen_A.data(), eigen_A.rows(), eigen_A.cols(),
-                               false, false);
+                               true, false);
   
   return arma_B;
 }
@@ -120,20 +128,13 @@ public:
   arma::field<arma::vec> children;
   arma::field<arma::field<arma::field<arma::uvec> > > u_is_which_col_f;
   
-  // -- objects for information about data at each block
-  // at least one of q available
-  arma::field<arma::uvec> na_1_blocks; 
-  // at least one of q missing
-  arma::field<arma::uvec> na_0_blocks; 
-  // indices of avails
-  arma::field<arma::uvec> na_ix_blocks;
+  
   // 0 if no available obs in this block, >0=count how many available
   arma::umat block_ct_obs; 
   
   // initializing indexing and NA counts. we do this at any change in coordinates
   void init_partitiondag(const arma::mat& target_coords, 
-                    const arma::field<arma::vec>& axis_partition,
-                    const arma::umat& na_mat);
+                    const arma::field<arma::vec>& axis_partition);
   void refresh_partitiondag(const arma::umat& na_mat);
   // -----------------------------  
   // -- covariance stuff that does not depend on value of hyperparams
@@ -160,6 +161,7 @@ public:
   bool refresh_cache(MeshDataLMC& data);
   bool get_mgplogdens_comps(MeshDataLMC& data);
   void update_block_covpars(int u, MeshDataLMC& data);
+  void update_all_block_covpars(MeshDataLMC& data);
   void update_block_wlogdens(int u, MeshDataLMC& data);
   bool calc_mgplogdens(MeshDataLMC& data);
   void logpost_refresh_after_gibbs(MeshDataLMC& data);
@@ -210,32 +212,60 @@ public:
   
   // sampling from MGP prior
   void prior_sample(MeshDataLMC& data);
+  void prediction_sample(const arma::vec& theta,
+                         const arma::mat& xobs, const arma::vec& wobs, 
+                         const arma::field<arma::uvec>& obs_indexing);
+  arma::mat predict_via_precision(const MGP& out_mgp, const arma::vec& theta);
+  Eigen::SparseMatrix<double> PP_all, PP_o, PP_ox;
+  
+  // utility for sampling posterior without cholesky
+  arma::mat posterior_sample_cholfree(MeshDataLMC& data);
   
   // collapsed sampler
   Eigen::CholmodDecomposition<Eigen::SparseMatrix<double> > solver;
   void solver_initialize();
   //void precision_cholesky_solve(const arma::vec& tausq);
-  void collapsed_logdensity(MeshDataLMC& data, const Eigen::MatrixXd& yXBe, 
+  void collapsed_logdensity(MeshDataLMC& data, 
+                            const Eigen::MatrixXd& ye, 
                                  const Eigen::MatrixXd& Xe,
-                                 const arma::vec& tausq_inv);
-  bool get_collapsed_logdens_comps(MeshDataLMC& data, const Eigen::MatrixXd& yXBe, 
+                                 const arma::mat& y,
+                                 const arma::mat& x,
+                                 const arma::mat& xb,
+                                 const arma::mat& Vbi,
+                                 const arma::mat& XtX,
+                                 const arma::vec& tausq_inv,
+                                 bool also_sample_w=false);
+  bool get_collapsed_logdens_comps(MeshDataLMC& data, 
+                                   const Eigen::MatrixXd& ye, 
                                    const Eigen::MatrixXd& Xe,
-                                   const arma::vec& tausq_inv);
-  void metrop_theta_collapsed(const Eigen::MatrixXd& yXBe, const Eigen::MatrixXd& Xe,
-                              const arma::vec& tausq_inv);
+                                   const arma::mat& y,
+                                   const arma::mat& x,
+                                   const arma::mat& xb,
+                                   const arma::mat& Vbi,
+                                   const arma::mat& XtX,
+                                   const arma::vec& tausq_inv,
+                                   bool also_sample_w=false);
+  arma::vec metrop_theta_collapsed(const Eigen::MatrixXd& ye, 
+                                   const Eigen::MatrixXd& Xe,
+                                   const arma::mat& y,
+                                   const arma::mat& x,
+                                   const arma::mat& xb,
+                                   const arma::mat& Vbi,
+                                   const arma::mat& XtX,
+                              const arma::vec& tausq_inv,
+                              bool also_sample_w=false);
+  
+  arma::vec gibbs_beta_collapsed();
   
   
   MGP();
   MGP(const arma::mat& target_coords, 
       const arma::mat& x_coords,
       const arma::field<arma::vec>& axis_partition,
-      const arma::umat& na_mat,
-      bool cached, 
       const arma::mat& theta_in,
       bool adapting_theta,
       const arma::mat& metrop_theta_sd,
       const arma::mat& metrop_theta_bounds,
-      bool use_ps_in,
       int space_dim, bool v_in, bool d_in);
   
   bool verbose;

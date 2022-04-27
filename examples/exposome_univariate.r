@@ -106,21 +106,126 @@ Y_full <- Y
 Y[which_na] <- NA
 
 
-
 # # # # # # # # # # # # # # # # # # # # # #
 #           run gramar                    #
 # # # # # # # # # # # # # # # # # # # # # #
 
-meshed_time <- system.time({
-  meshed_out <- gramar::gramar(y=Y, x=X, k=1,
-                               block_size = 40,
-                               n_samples = 10,
-                               n_burnin = 10,
-                               n_thin = 1,
+y=Y[!is.na(Y)]
+x=X[!is.na(Y),]
+
+
+#set.seed(1)
+#y <- rnorm(40)
+#x <- matrix(rnorm(80), ncol=2)
+
+gramar_time <- system.time({
+  gramar_out <- gramar::gramar(y=y, x=x, 
+                               block_size = 30,
+                               n_samples = 0,
+                               n_burnin = 0,
                                n_threads = 16,
-                               verbose = Inf,
-                               family = data_types[1],
+                               verbose = 20,
                                debug = list(sample_beta=T, sample_tausq=T, 
-                                            sample_theta=T, sample_w=T, sample_lambda=T,
-                                            verbose=T, debug=T))
+                                            sample_theta=T, verbose=F, debug=F))
 })
+
+tsq <- 1
+  
+
+nr <- length(y)
+
+yo <- y[gramar_out$savedata$sort_ix]
+xo <- x[gramar_out$savedata$sort_ix,]
+
+Ci <- gramar_out$Ci
+Citsqi <- gramar_out$Citsqi
+
+cholCi <- t(chol(Ci))
+ldetCi <- 2 * sum(log(diag(cholCi)))
+
+cholCitsqi <- t(chol(Citsqi))
+ldetCitsqi <- 2 * sum(log(diag(cholCitsqi)))
+
+
+# find ldens via direct inversion
+Vb <- diag(ncol(x))*100
+Vbi <- solve(Vb)
+In <- diag(nr)
+tsq2 <- tsq^2
+
+CC <- solve(Ci)
+# full marginalized covariance
+Ctsq <- xo %*% Vb %*% t(xo) + CC + diag(nr) * tsq
+cholCC <- t(chol(Ctsq))
+ldetCC <- 2 * sum(log(diag(cholCC)))
+
+ycore <- (t(yo) %*% solve(Ctsq, yo) )
+(ldens_correct <- -0.5 * ldetCC - 0.5 * ycore)
+
+checker <- function(m1, m2) sum(abs(m1-m2))
+
+# first step
+Omegai <- solve(CC + diag(nr) * tsq)
+Omegai_smw <- In/tsq - solve(Ci + In/tsq)/tsq2
+
+checker(Omegai, Omegai_smw)
+
+#1
+Lambda <- xo %*% solve(Vbi + t(xo) %*% Omegai %*% xo, t(xo))
+
+checker(t(yo) %*% solve(Ci + In/tsq)/tsq2,
+        t(solve(Ci + In/tsq, yo))/tsq2)
+
+t(yo) %*% yo/tsq - 1/tsq2 * t(yo) %*% solve(Ci + In/tsq) %*% yo - 
+  (t(yo)/tsq) %*% Lambda %*% yo/tsq + 
+  (t(yo)/tsq) %*% Lambda %*% solve(Ci + In/tsq, yo)/tsq2 + 
+  (t(solve(Ci + In/tsq, yo))/tsq2) %*% Lambda %*% yo/tsq - 
+  (t(solve(Ci + In/tsq, yo))/tsq2) %*% Lambda %*% solve(Ci + In/tsq, yo)/tsq2
+
+
+# ingredients
+Citsqiiy <- solve(Citsqi, yo)
+CitsqiiX <- solve(Citsqi, xo)
+Lambdainside <- solve(Vb) + crossprod(xo)/tsq - crossprod(xo, CitsqiiX)/tsq^2
+Xty <- crossprod(xo, yo)
+Lambda <- xo %*% solve(Lambdainside, t(xo))
+
+yellow <- crossprod(yo)/tsq
+blue <- -crossprod(yo, Citsqiiy)/tsq2
+pink <- -crossprod(yo/tsq, xo) %*% solve(Lambdainside, crossprod(xo, (yo/tsq - Citsqiiy/tsq2)))
+green <- 1/tsq2 * crossprod(Citsqiiy, xo) %*% solve(Lambdainside, crossprod(xo, (yo/tsq - Citsqiiy/tsq2)))
+
+
+# find ldens via woodbury and matrix determinant lemma
+# determinant
+ldet_Ctsq_i <- nr * log(tsq) - ldetCi + ldetCitsqi
+
+solveCy <- solve(Citsqi, yo)
+
+-0.5 * ldet_Ctsq_i - 0.5/tsq * 
+  sum(yo^2) + 0.5/tsq^2 * crossprod(yo, solveCy)
+
+
+
+gramar_out$ldens
+
+# check ldens
+
+
+
+A <- matrix(rnorm(50*50), ncol=50) %>% tcrossprod()
+B <- matrix(rnorm(50*50), ncol=50) %>% tcrossprod()
+ 
+tchol <- function(x) t(chol(x))
+
+(tchol(A) %*% tchol(B))[1:5, 1:5]
+tchol(B %*% A)[1:5, 1:5]
+
+
+
+
+
+
+
+
+

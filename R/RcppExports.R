@@ -21,8 +21,8 @@ gramar_wpredict <- function(Xin, coordsin, indexingin, Xout, coordsout, axis_par
     .Call(`_gramar_gramar_wpredict`, Xin, coordsin, indexingin, Xout, coordsout, axis_partition, w_mcmc, theta_mcmc, verbose, debug)
 }
 
-gramar_wpredict_via_prec <- function(Xin, coordsin, indexingin, Xout, coordsout, axis_partition, w_mcmc, theta_mcmc, verbose = FALSE, debug = FALSE) {
-    .Call(`_gramar_gramar_wpredict_via_prec`, Xin, coordsin, indexingin, Xout, coordsout, axis_partition, w_mcmc, theta_mcmc, verbose, debug)
+gramar_wpredict_via_prec_part <- function(Xin, coordsin, indexingin, Xout, coordsout, axis_partition, w_mcmc, theta_mcmc, n_threads = 1L, verbose = FALSE, debug = FALSE) {
+    .Call(`_gramar_gramar_wpredict_via_prec_part`, Xin, coordsin, indexingin, Xout, coordsout, axis_partition, w_mcmc, theta_mcmc, n_threads, verbose, debug)
 }
 
 Cov_matern <- function(x, y, sigmasq, phi, nu, tausq, same, nThreads = 1L) {
@@ -61,8 +61,8 @@ uturbocolthreshold <- function(col1, thresholds) {
     .Call(`_gramar_uturbocolthreshold`, col1, thresholds)
 }
 
-split_ap <- function(membership, coords, thresholds) {
-    .Call(`_gramar_split_ap`, membership, coords, thresholds)
+split_ap <- function(membership, coords, thresholds, offset) {
+    .Call(`_gramar_split_ap`, membership, coords, thresholds, offset)
 }
 
 cube_tcrossprod <- function(x) {

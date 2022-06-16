@@ -19,7 +19,7 @@ importFrom(dplyr, "pull")
 importFrom(stats, "prcomp")
 #importFrom(FNN, "get.knnx")
 
-#S3method("predict", "spmeshed")
+S3method("predict", "gramar")
 
 export("gramar", "summary_list_mean", "summary_list_q")
 

@@ -36,10 +36,23 @@ Gramar::Gramar(
     Rcpp::Rcout << "Gramar::Gramar initialization.\n";
   }
   
-  // data
-  y = y_in;
-  //Z = arma::ones(y.n_rows);
-  X = X_in;
+  // Partitioning/DAG
+  axis_partition = axis_partition_in;
+  dd = coords_in.n_cols;
+  
+  // standard level
+  mgp.~MGP(); // cleanup
+  new (&mgp) MGP(coords_in, xcoords_in, axis_partition, 
+       theta_in, 
+       adapting_theta, metrop_theta_sd, metrop_theta_bounds,
+       dd, verbose, debug);
+  
+  
+  y = y_in;//.rows(mgp.block_order);
+  X = X_in;//.rows(mgp.block_order);
+  coords = coords_in;//.rows(mgp.block_order);
+  
+  
   XtX = X.t() * X;
   
   Xe = armamat_to_matrixxd(X);
@@ -52,12 +65,9 @@ Gramar::Gramar(
   
   p = X.n_cols;
   // spatial coordinates and dimension
-  coords = coords_in;
-  dd = coords.n_cols;
-  q = y.n_cols;
   
-  // Partitioning/DAG
-  axis_partition = axis_partition_in;
+  
+  q = y.n_cols;
   
   tausq_inv = tausq_inv_in;
   
@@ -67,10 +77,6 @@ Gramar::Gramar(
   Bcoeff = beta_in; 
   for(unsigned int j=0; j<q; j++){
     XB.col(j) = X * Bcoeff.col(j);
-  }
-  
-  if(verbose & debug){
-    Rcpp::Rcout << "Beta size: " << arma::size(Bcoeff) << "\n"; 
   }
   
   // prior params
@@ -86,13 +92,8 @@ Gramar::Gramar(
   Rcpp::Rcout << "--- " << endl;
   Rcpp::Rcout << arma::size(theta_in) << " " << arma::size(metrop_theta_sd) << " " << arma::size(metrop_theta_bounds) << endl;
   
-  // standard level
-  mgp.~MGP(); // cleanup
-  new (&mgp) MGP(coords, xcoords_in, axis_partition, 
-                theta_in, 
-                adapting_theta, metrop_theta_sd, metrop_theta_bounds,
-                dd, verbose, debug);
-
+  
+  
   n_blocks = mgp.n_blocks;
   
   // now we know where NAs are, we can erase them
@@ -150,7 +151,8 @@ void expand_grid_with_values_(arma::umat& locs,
 */
 
 void Gramar::metrop_theta_collapsed(bool sample_w){
-  tausq_inv = mgp.metrop_theta_collapsed(ye, Xe, y, X, XB, Vi, XtX, tausq_inv, sample_w);
+  tausq_inv = mgp.metrop_theta_collapsed(ye, Xe, y, X, XB, Vi, XtX, tausq_inv, 
+                                         sample_w);
 }
 
 void Gramar::mgp_initialize_param(){

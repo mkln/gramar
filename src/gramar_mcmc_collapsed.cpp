@@ -43,8 +43,8 @@ Rcpp::List mgp_precision(const arma::mat& coords,
   Eigen::SparseMatrix<double> Ci_prd = mgp.param_data.Citsqi;
 
   return Rcpp::List::create(
-    Rcpp::Named("H") = mgp.H,
-    Rcpp::Named("Ri") = mgp.Ri,
+    Rcpp::Named("H") = mgp.He,
+    Rcpp::Named("Ri") = mgp.Rie,
     Rcpp::Named("Ci_prd") = Ci_prd,
     Rcpp::Named("linear_sort_map") = mgp.linear_sort_map,
     Rcpp::Named("membership") = mgp.membership
@@ -266,6 +266,8 @@ Rcpp::List gramar_mcmc_collapsed(
       Rcpp::Named("indexing") = msp.mgp.indexing,
       //Rcpp::Named("Ci") = msp.mgp.param_data.Cidebug,
       Rcpp::Named("Citsqi") = msp.mgp.param_data.Citsqi,
+      Rcpp::Named("order") = msp.mgp.block_order,
+      Rcpp::Named("y") = msp.y,
       Rcpp::Named("mcmc") = mcmc,
       Rcpp::Named("mcmc_time") = mcmc_time/1000.0,
       Rcpp::Named("marglik") = llsave,
@@ -350,8 +352,9 @@ Rcpp::List gramar_wpredict(
 }
 
 
+
 //[[Rcpp::export]]
-Rcpp::List gramar_wpredict_via_prec(
+Rcpp::List gramar_wpredict_via_prec_part(
     const arma::mat& Xin,
     const arma::mat& coordsin,
     const arma::field<arma::uvec>& indexingin,
@@ -363,11 +366,15 @@ Rcpp::List gramar_wpredict_via_prec(
     
     const arma::mat& w_mcmc,
     const arma::mat& theta_mcmc,
-    
+    int n_threads=1,
     bool verbose=false,
     bool debug=false){
   
   Rcpp::Rcout << "init for prediction " << endl;
+  
+#ifdef _OPENMP
+  omp_set_num_threads(n_threads);
+#endif
   
   int n_par = theta_mcmc.n_rows + 1;
   int dd = coordsout.n_cols;
@@ -379,46 +386,38 @@ Rcpp::List gramar_wpredict_via_prec(
   arma::mat w_predicted = arma::zeros(Xout.n_rows, mcmc);
   
   Rcpp::Rcout << "Create MGP obj " << endl;
-  MGP in_mgp(coordsin, Xin, axis_partition, 
-              theta_mcmc.col(0), false, metrop_theta_sd, metrop_theta_bounds,
-              dd, verbose, debug);
-  
-  MGP out_mgp(coordsout, Xout, axis_partition, 
-             theta_mcmc.col(0), false, metrop_theta_sd, metrop_theta_bounds,
+  MGP in_mgp(coordsin, Xin, 
+             coordsout, Xout, axis_partition, 
+             theta_mcmc.col(0), 
              dd, verbose, debug);
   
-  in_mgp.refresh_cache(in_mgp.param_data);
-  in_mgp.update_all_block_covpars(in_mgp.param_data);
-
-  /*
-  in_mgp.w = w_mcmc.col(0);
-  arma::vec theta = theta_mcmc.col(0);
-  in_mgp.param_data.theta = theta;
-  w_predicted.col(0) = in_mgp.predict_via_precision(out_mgp, theta);
-  */
-  for(int i=0; i<mcmc; i++){
-    in_mgp.w = w_mcmc.col(i);
-    arma::vec theta = theta_mcmc.col(i);
+  //in_mgp.refresh_cache(in_mgp.param_data);
+  //in_mgp.update_all_block_covpars(in_mgp.param_data);
+  
+  int n_chunks = 10;
+  int startmcmc = 1;
+  int endmcmc = mcmc/n_chunks;
+  
+  for(int j=0; j<n_chunks; j++){
+    startmcmc = j*mcmc/n_chunks;
+    endmcmc = std::min(mcmc, (j+1)*mcmc/n_chunks);
+    Rcpp::Rcout << j << " " << startmcmc << " " << endmcmc << endl; 
+#ifdef _OPENMP
+#pragma omp parallel for num_threads(n_threads)
+#endif
+    for(int i=startmcmc; i<endmcmc; i++){
+      in_mgp.w = w_mcmc.col(i);
+      arma::vec theta = theta_mcmc.col(i);
+      w_predicted.col(i) = in_mgp.predict_via_precision_part(theta);
+    }
     
-    in_mgp.param_data.theta = theta;
-    in_mgp.refresh_cache(in_mgp.param_data);
-    in_mgp.update_all_block_covpars(in_mgp.param_data);
-  
-    w_predicted.col(i) = in_mgp.predict_via_precision(out_mgp, theta);
   }
-  
+
   
   return Rcpp::List::create(
-    Rcpp::Named("w_predicted") = w_predicted,
-    Rcpp::Named("indexing") = in_mgp.indexing,
-    Rcpp::Named("H") = in_mgp.H,
-    Rcpp::Named("Ri") = in_mgp.Ri,
-    Rcpp::Named("PP_all") = in_mgp.PP_all,
-    Rcpp::Named("PP_o") = in_mgp.PP_o,
-    Rcpp::Named("PP_ox") = in_mgp.PP_ox
+    Rcpp::Named("w_predicted") = w_predicted
   );
 }
-
 
 
 

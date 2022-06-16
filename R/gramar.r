@@ -146,8 +146,8 @@ gramar <- function(y, x,
     
     simdata <- data.frame(ix=1:nrow(coords)) %>% 
       cbind(coords, y, x) %>% 
-      as.data.frame() %>%
-      dplyr::arrange(!!!rlang::syms(paste0("Var", 1:dd)))
+      as.data.frame() #%>%
+     # dplyr::arrange(!!!rlang::syms(paste0("Var", 1:dd)))
 
     absize <- round(nrow(simdata)/prod(axis_partition))
     
@@ -357,9 +357,9 @@ gramar <- function(y, x,
     }
     
     order_sort_ix <- order(sort_ix)
-    saved <- listN(y[order_sort_ix], 
-                   x[order_sort_ix,], 
-                   coords[order_sort_ix,],
+    saved <- listN(y,#[order_sort_ix], 
+                   x,#[order_sort_ix,], 
+                   coords,#[order_sort_ix,],
 
                    sort_ix,
       set_unif_bounds,

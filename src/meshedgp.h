@@ -2,7 +2,7 @@
 #define MGPCLASS
 
 // uncomment to disable openmp on compilation
-#undef _OPENMP
+//#undef _OPENMP
 
 #include "RcppArmadillo.h"
 
@@ -24,7 +24,14 @@ using namespace std;
 
 arma::uvec uturbocolthreshold(const arma::vec& col1, const arma::vec& thresholds);
 
-arma::field<arma::uvec> split_ap(const arma::mat& coords, const arma::field<arma::vec>& thresholds);
+arma::field<arma::uvec> split_ap(arma::uvec& membership, const arma::mat& coords, 
+         const arma::field<arma::vec>& thresholds, int offset=0);
+
+arma::field<arma::uvec> reorder_by_block(arma::field<arma::uvec> indexing,
+                                         arma::uvec& order, 
+                                         arma::uvec& restore_order,
+                                         const arma::uvec& membership,
+                                         int offset=0);
 
 struct MeshDataLMC {
   arma::mat theta; 
@@ -101,11 +108,15 @@ class MGP {
 public:
   
   // utils
-  int k;
+  int k; // not used
+  int n; // number of in-sample observations
   int n_blocks;
   int dd;
   double hl2pi;
   bool use_ps;
+  
+  arma::uvec block_order;
+  //arma::uvec block_order_restore;
   
   // kernel inputs
   arma::mat xcoords;
@@ -123,6 +134,7 @@ public:
   arma::field<arma::vec> thresholds;
   arma::field<arma::uvec> indexing; 
   arma::field<arma::uvec> parents_indexing;
+  
   arma::uvec membership; // block membership for each coordinate
   // objects for graphical representation of conditional independence
   arma::field<arma::vec> children;
@@ -203,7 +215,7 @@ public:
   double quadratic_form(const arma::mat& w1, const arma::mat& w2, MeshDataLMC& data);
   
   // MGP precision matrix components
-  Eigen::SparseMatrix<double> H, Ri;
+  Eigen::SparseMatrix<double> He, Rie;
   arma::uvec sortsort_order;
   arma::umat linear_sort_map;
   void new_precision_matrix_product(MeshDataLMC& data);
@@ -212,11 +224,6 @@ public:
   
   // sampling from MGP prior
   void prior_sample(MeshDataLMC& data);
-  void prediction_sample(const arma::vec& theta,
-                         const arma::mat& xobs, const arma::vec& wobs, 
-                         const arma::field<arma::uvec>& obs_indexing);
-  arma::mat predict_via_precision(const MGP& out_mgp, const arma::vec& theta);
-  Eigen::SparseMatrix<double> PP_all, PP_o, PP_ox;
   
   // utility for sampling posterior without cholesky
   arma::mat posterior_sample_cholfree(MeshDataLMC& data);
@@ -267,6 +274,44 @@ public:
       const arma::mat& metrop_theta_sd,
       const arma::mat& metrop_theta_bounds,
       int space_dim, bool v_in, bool d_in);
+  
+  // predictions
+  arma::mat pred_coords;
+  arma::mat pred_xcoords;
+  arma::mat io_xcoords;
+  int no;
+  arma::field<arma::uvec> pred_indexing;
+  arma::field<arma::uvec> pred_parents_indexing;
+  arma::field<arma::uvec> pred_indexing_reorder;
+  arma::field<arma::uvec> pred_parents_indexing_reorder;
+  arma::field<arma::vec> pred_children;
+  arma::umat pred_block_ct_obs; 
+  arma::uvec pred_membership;
+  arma::field<arma::field<arma::field<arma::uvec> > > pred_u_is_which_col_f;
+  
+  MGP(const arma::mat& target_coords, 
+      const arma::mat& x_coords,
+      const arma::mat& coordsout,
+      const arma::mat& x_out,
+      const arma::field<arma::vec>& axis_partition,
+      const arma::mat& theta_in,
+      int space_dim, bool v_in, bool d_in);
+  void init_partitiondag_prediction(const arma::mat& target_coords, const arma::mat& coordsout,
+                         const arma::field<arma::vec>& axis_partition);
+  void prediction_sample(const arma::vec& theta,
+                         const arma::mat& xobs, const arma::vec& wobs, 
+                         const arma::field<arma::uvec>& obs_indexing);
+  //arma::mat predict_via_precision_product(const MGP& out_mgp, const arma::vec& theta);
+  //arma::mat predict_via_precision_orig(const MGP& out_mgp, const arma::vec& theta);
+  //arma::mat predict_via_precision_direct(const arma::vec& theta);
+  arma::mat predict_via_precision_part(const arma::vec& theta);
+  //Eigen::SparseMatrix<double> PP_all, HH_o, PP_o, PP_ox, Ciprediction;
+  arma::uvec pred_block_order;
+  
+  arma::uvec block_order_all;
+  arma::uvec block_order_reverse;
+  //arma::uvec pred_block_order_restore;
+  
   
   bool verbose;
   bool debug;

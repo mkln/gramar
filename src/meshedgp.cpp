@@ -24,7 +24,9 @@ arma::uvec uturbocolthreshold(const arma::vec& col1, const arma::vec& thresholds
 }
 
 //[[Rcpp::export]]
-arma::field<arma::uvec> split_ap(arma::uvec& membership, const arma::mat& coords, const arma::field<arma::vec>& thresholds){
+arma::field<arma::uvec> split_ap(arma::uvec& membership, const arma::mat& coords, 
+                                 const arma::field<arma::vec>& thresholds, 
+                                 int offset){
   arma::umat resultmat = arma::zeros<arma::umat>(arma::size(coords));
   membership = arma::zeros<arma::uvec>(coords.n_rows);
   
@@ -41,11 +43,30 @@ arma::field<arma::uvec> split_ap(arma::uvec& membership, const arma::mat& coords
   for(unsigned int i=0; i<resultmat.n_rows; i++){
     unsigned int ixi = resultmat(i, 0);
     unsigned int ixj = resultmat(i, 1);
-    splitmat(ixi-1, ixj-1) = arma::join_vert( splitmat(ixi-1, ixj-1), ones*i);
+    splitmat(ixi-1, ixj-1) = arma::join_vert( splitmat(ixi-1, ixj-1), offset + 
+      ones*i);
     membership(i) = arma::sub2ind(arma::size(ni+1, nj+1), ixi-1, ixj-1);
   }
   
   return splitmat;
+}
+
+arma::field<arma::uvec> reorder_by_block(arma::field<arma::uvec> indexing,
+                                         arma::uvec& order, 
+                                         arma::uvec& restore_order,
+                                         const arma::uvec& membership,
+                                         int offset){
+  
+  //arma::uvec sortsort_order = arma::sort_index(arma::sort_index(membership));
+  int ctr=0;
+  for(unsigned int i=0; i<indexing.n_elem; i++){
+    //indexing(i) = offset+sortsort_order(indexing(i)-offset);
+    indexing(i) = arma::regspace<arma::uvec>(offset + ctr, 
+             offset + ctr + indexing(i).n_elem);
+  }
+  //order = sortsort_order;
+  //restore_order = arma::sort_index(order);
+  return indexing;
 }
 
 MGP::MGP(const arma::mat& target_coords, 
@@ -70,11 +91,14 @@ MGP::MGP(const arma::mat& target_coords,
     Rcpp::Rcout << "initializing MGP " << endl;  
   }
   
+  n = x_coords.n_rows;
   xcoords = x_coords;
   
   thresholds = axis_partition;
   init_partitiondag(target_coords, axis_partition);
   init_cache(false);
+  
+  block_order = field_v_concatm(indexing);
   
   n_blocks = indexing.n_elem;
   
@@ -94,12 +118,17 @@ MGP::MGP(const arma::mat& target_coords,
   theta_adapt_active = adapting_theta;
 }
 
+
 void MGP::init_partitiondag(const arma::mat& target_coords, 
                             const arma::field<arma::vec>& axis_partition){
   
   //int q = na_mat.n_cols;
-  coords = target_coords;
+  
   indexing = split_ap(membership, target_coords, axis_partition);
+
+  coords = target_coords;//.rows(block_order);
+  xcoords = xcoords;//.rows(block_order);
+  
   n_blocks = (indexing.n_rows +.0)*(indexing.n_cols +.0);
   
   arma::field<arma::uvec> dim_by_parent(arma::size(indexing));
@@ -120,7 +149,7 @@ void MGP::init_partitiondag(const arma::mat& target_coords,
   if(verbose & debug){
     Rcpp::Rcout << "[init_indexing] parent_indexing\n";
   }
-  
+  Rcpp::Rcout << dd << endl;
   for(unsigned int i=0; i<indexing.n_rows; i++){
     for(unsigned int j=0; j<indexing.n_cols; j++){
       arma::field<arma::uvec> pixs(dd);
@@ -212,6 +241,8 @@ void MGP::init_partitiondag(const arma::mat& target_coords,
   }
   
 }
+
+
 
 void MGP::refresh_partitiondag(const arma::umat& na_mat){
   if(verbose & debug){

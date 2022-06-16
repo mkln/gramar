@@ -111,9 +111,9 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// gramar_wpredict_via_prec
-Rcpp::List gramar_wpredict_via_prec(const arma::mat& Xin, const arma::mat& coordsin, const arma::field<arma::uvec>& indexingin, const arma::mat& Xout, const arma::mat& coordsout, const arma::field<arma::vec>& axis_partition, const arma::mat& w_mcmc, const arma::mat& theta_mcmc, bool verbose, bool debug);
-RcppExport SEXP _gramar_gramar_wpredict_via_prec(SEXP XinSEXP, SEXP coordsinSEXP, SEXP indexinginSEXP, SEXP XoutSEXP, SEXP coordsoutSEXP, SEXP axis_partitionSEXP, SEXP w_mcmcSEXP, SEXP theta_mcmcSEXP, SEXP verboseSEXP, SEXP debugSEXP) {
+// gramar_wpredict_via_prec_part
+Rcpp::List gramar_wpredict_via_prec_part(const arma::mat& Xin, const arma::mat& coordsin, const arma::field<arma::uvec>& indexingin, const arma::mat& Xout, const arma::mat& coordsout, const arma::field<arma::vec>& axis_partition, const arma::mat& w_mcmc, const arma::mat& theta_mcmc, int n_threads, bool verbose, bool debug);
+RcppExport SEXP _gramar_gramar_wpredict_via_prec_part(SEXP XinSEXP, SEXP coordsinSEXP, SEXP indexinginSEXP, SEXP XoutSEXP, SEXP coordsoutSEXP, SEXP axis_partitionSEXP, SEXP w_mcmcSEXP, SEXP theta_mcmcSEXP, SEXP n_threadsSEXP, SEXP verboseSEXP, SEXP debugSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -125,9 +125,10 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< const arma::field<arma::vec>& >::type axis_partition(axis_partitionSEXP);
     Rcpp::traits::input_parameter< const arma::mat& >::type w_mcmc(w_mcmcSEXP);
     Rcpp::traits::input_parameter< const arma::mat& >::type theta_mcmc(theta_mcmcSEXP);
+    Rcpp::traits::input_parameter< int >::type n_threads(n_threadsSEXP);
     Rcpp::traits::input_parameter< bool >::type verbose(verboseSEXP);
     Rcpp::traits::input_parameter< bool >::type debug(debugSEXP);
-    rcpp_result_gen = Rcpp::wrap(gramar_wpredict_via_prec(Xin, coordsin, indexingin, Xout, coordsout, axis_partition, w_mcmc, theta_mcmc, verbose, debug));
+    rcpp_result_gen = Rcpp::wrap(gramar_wpredict_via_prec_part(Xin, coordsin, indexingin, Xout, coordsout, axis_partition, w_mcmc, theta_mcmc, n_threads, verbose, debug));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -259,15 +260,16 @@ BEGIN_RCPP
 END_RCPP
 }
 // split_ap
-arma::field<arma::uvec> split_ap(arma::uvec& membership, const arma::mat& coords, const arma::field<arma::vec>& thresholds);
-RcppExport SEXP _gramar_split_ap(SEXP membershipSEXP, SEXP coordsSEXP, SEXP thresholdsSEXP) {
+arma::field<arma::uvec> split_ap(arma::uvec& membership, const arma::mat& coords, const arma::field<arma::vec>& thresholds, int offset);
+RcppExport SEXP _gramar_split_ap(SEXP membershipSEXP, SEXP coordsSEXP, SEXP thresholdsSEXP, SEXP offsetSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::uvec& >::type membership(membershipSEXP);
     Rcpp::traits::input_parameter< const arma::mat& >::type coords(coordsSEXP);
     Rcpp::traits::input_parameter< const arma::field<arma::vec>& >::type thresholds(thresholdsSEXP);
-    rcpp_result_gen = Rcpp::wrap(split_ap(membership, coords, thresholds));
+    Rcpp::traits::input_parameter< int >::type offset(offsetSEXP);
+    rcpp_result_gen = Rcpp::wrap(split_ap(membership, coords, thresholds, offset));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -314,7 +316,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_gramar_mgp_precision", (DL_FUNC) &_gramar_mgp_precision, 9},
     {"_gramar_gramar_mcmc_collapsed", (DL_FUNC) &_gramar_gramar_mcmc_collapsed, 23},
     {"_gramar_gramar_wpredict", (DL_FUNC) &_gramar_gramar_wpredict, 10},
-    {"_gramar_gramar_wpredict_via_prec", (DL_FUNC) &_gramar_gramar_wpredict_via_prec, 10},
+    {"_gramar_gramar_wpredict_via_prec_part", (DL_FUNC) &_gramar_gramar_wpredict_via_prec_part, 11},
     {"_gramar_Cov_matern", (DL_FUNC) &_gramar_Cov_matern, 8},
     {"_gramar_Cov_matern2", (DL_FUNC) &_gramar_Cov_matern2, 5},
     {"_gramar_Cov_matern_h", (DL_FUNC) &_gramar_Cov_matern_h, 5},
@@ -324,7 +326,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_gramar_kernp_xy", (DL_FUNC) &_gramar_kernp_xy, 3},
     {"_gramar_kthresholdscp", (DL_FUNC) &_gramar_kthresholdscp, 2},
     {"_gramar_uturbocolthreshold", (DL_FUNC) &_gramar_uturbocolthreshold, 2},
-    {"_gramar_split_ap", (DL_FUNC) &_gramar_split_ap, 3},
+    {"_gramar_split_ap", (DL_FUNC) &_gramar_split_ap, 4},
     {"_gramar_cube_tcrossprod", (DL_FUNC) &_gramar_cube_tcrossprod, 1},
     {"_gramar_summary_list_mean", (DL_FUNC) &_gramar_summary_list_mean, 2},
     {"_gramar_summary_list_q", (DL_FUNC) &_gramar_summary_list_q, 3},

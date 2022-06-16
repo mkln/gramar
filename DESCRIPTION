@@ -5,7 +5,7 @@ Version: 0.0.1
 Date: 2022-03-31
 Author: Michele Peruzzi
 Maintainer: Michele Peruzzi <michele.peruzzi@duke.edu>
-Description: Fits Bayesian Graph Machine Regression models. Funded by ERC grant 856506 and NIH grant R01ES028804.
+Description: Fits Bayesian Graph Machine Regression models. Funded by ERC grant 856506 and NIH grants R01ES027498, R01ES028804.
 License: GPL (>= 3)
 Depends: Matrix
 Imports: Rcpp (>= 1.0.5), stats, dplyr, glue, rlang, magrittr

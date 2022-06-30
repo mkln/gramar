@@ -18,3 +18,6 @@ gramar_predict <- predict(gramar_out, newx=Xout, n_threads=16)
 
 
 Funding info: ERC 856506, NIH R01ES027498 and R01ES028804.
+
+### [Poster at ISBA](poster/poster3648.pdf) World Meeting in Montreal, Jun 29, 2022
+![](poster/posterPNG.png?raw=true)

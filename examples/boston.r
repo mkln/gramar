@@ -42,13 +42,12 @@ gramar_predict <- predict(gramar_out, newx=X_test_s, n_threads = 16)
 yhat_gramar <- apply(gramar_predict$mu, 1, mean) + y_train_mean
 sqrt(mean((BostonOut$medv - yhat_gramar)^2))
 
-# make image prediction
+# make an image of the interaction between the first two predictors
 xaxis <- seq(-2, 2, length.out=20)
 X_test_image <- expand.grid(xaxis, xaxis) %>%
   cbind(0, 0, 0, 0, 0, 0) %>% as.matrix()
 colnames(X_test_image) <- colnames(X_test_s)
 
-# predict on test set
 gramar_predict_img <- predict(gramar_out, newx=X_test_image, n_threads = 16)
 
 yhat_gramar_img <- gramar_predict_img$mu %>% apply(1, mean)

@@ -4,6 +4,8 @@
 #include "utils_interrupt_handler.h"
 #include "utils_parametrize.h"
 
+//#undef _OPENMP
+
 using namespace std;
 
 //[[Rcpp::export]]
@@ -401,7 +403,7 @@ Rcpp::List gramar_wpredict_via_prec_part(
   for(int j=0; j<n_chunks; j++){
     startmcmc = j*mcmc/n_chunks;
     endmcmc = std::min(mcmc, (j+1)*mcmc/n_chunks);
-    Rcpp::Rcout << j << " " << startmcmc << " " << endmcmc << endl; 
+    Rcpp::Rcout << j*10 << "% " << startmcmc << " " << endmcmc << endl; 
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(n_threads)
 #endif

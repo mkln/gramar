@@ -1,8 +1,8 @@
 Package: gramar
 Type: Package
 Title: Bayesian Graph Machine Regression
-Version: 0.0.1
-Date: 2022-03-31
+Version: 0.0.2
+Date: 2022-07-02
 Author: Michele Peruzzi
 Maintainer: Michele Peruzzi <michele.peruzzi@duke.edu>
 Description: Fits Bayesian Graph Machine Regression models. Funded by ERC grant 856506 and NIH grants R01ES027498, R01ES028804.
